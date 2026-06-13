@@ -46,3 +46,24 @@ class MultiScaleDiscriminator(nn.Module):
                 x = self.downsample(x)
             outputs.append(disc(x))
         return outputs
+
+    def forward_with_features(
+        self, x: torch.Tensor
+    ) -> tuple[list[torch.Tensor], list[list[torch.Tensor]]]:
+        """Same as forward but also returns intermediate features from each scale.
+
+        Returns:
+            logits:   list of patch logit maps (one per scale, finest → coarsest)
+            features: list of feature lists (one list per scale; each list has one
+                      tensor per conv block inside that discriminator)
+        Used by feature_matching_loss.
+        """
+        logits: list[torch.Tensor] = []
+        all_features: list[list[torch.Tensor]] = []
+        for i, disc in enumerate(self.discriminators):
+            if i > 0:
+                x = self.downsample(x)
+            logit, feats = disc.forward_with_features(x)
+            logits.append(logit)
+            all_features.append(feats)
+        return logits, all_features

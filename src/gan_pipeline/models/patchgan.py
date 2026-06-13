@@ -55,3 +55,19 @@ class PatchGANDiscriminator(BaseDiscriminator):
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
         """x: pre-concatenated (sar, eo) tensor of shape (B, sar_ch+eo_ch, H, W)."""
         return self.net(x)
+
+    def forward_with_features(
+        self, x: torch.Tensor
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        """Run the network and return (logit_map, [intermediate_feature, ...]).
+
+        Features are the outputs after each conv block (all layers except the
+        final 1-channel conv). Used by feature_matching_loss.
+        """
+        features: list[torch.Tensor] = []
+        layers = list(self.net.children())
+        for layer in layers[:-1]:
+            x = layer(x)
+            features.append(x)
+        logit = layers[-1](x)
+        return logit, features

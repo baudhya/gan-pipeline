@@ -60,6 +60,26 @@ def multiscale_generator_loss(
     return torch.stack(losses).mean()
 
 
+def feature_matching_loss(
+    real_features: list[list[torch.Tensor]],
+    fake_features: list[list[torch.Tensor]],
+) -> torch.Tensor:
+    """L1 distance between real and fake discriminator features, averaged over scales and layers.
+
+    Args:
+        real_features: per-scale list of intermediate feature maps from the real pair.
+        fake_features: same structure for the fake pair (gradients flow through these).
+    Both arguments come from MultiScaleDiscriminator.forward_with_features().
+    """
+    total = fake_features[0][0].new_zeros(())
+    n = 0
+    for real_scale, fake_scale in zip(real_features, fake_features):
+        for real_feat, fake_feat in zip(real_scale, fake_scale):
+            total = total + F.l1_loss(fake_feat, real_feat.detach())
+            n += 1
+    return total / max(n, 1)
+
+
 class VGGPerceptualLoss(nn.Module):
     """Perceptual loss using frozen VGG16 features (relu1_2, relu2_2, relu3_3, relu4_3).
 

@@ -13,6 +13,7 @@ from gan_pipeline.models.base import BaseGenerator
 from gan_pipeline.models.losses import (
     LossType,
     VGGPerceptualLoss,
+    feature_matching_loss,
     multiscale_discriminator_loss,
     multiscale_generator_loss,
 )
@@ -49,6 +50,7 @@ class Pix2PixTrainer:
         self.vgg_loss: VGGPerceptualLoss | None = (
             VGGPerceptualLoss().to(device) if self.lambda_vgg > 0 else None
         )
+        self.lambda_fm: float = float(cfg.training.get("lambda_fm", 0.0))
 
         self.opt_g = torch.optim.Adam(
             generator.parameters(),
@@ -79,7 +81,7 @@ class Pix2PixTrainer:
 
     def _train_step(
         self, sar: torch.Tensor, eo: torch.Tensor
-    ) -> tuple[float, float, float, float]:
+    ) -> tuple[float, float, float, float, float]:
         sar = sar.to(self.device)
         eo = eo.to(self.device)
 
@@ -99,10 +101,25 @@ class Pix2PixTrainer:
         self.opt_d.step()
 
         # --- Generator ---
-        fake_maps_g = self.discriminator(torch.cat([sar, fake_eo], dim=1))
+        fake_pair_g = torch.cat([sar, fake_eo], dim=1)
+
+        g_fm_val = 0.0
+        if self.lambda_fm > 0:
+            with torch.no_grad():
+                _, real_feats = self.discriminator.forward_with_features(real_pair)
+            fake_maps_g, fake_feats = self.discriminator.forward_with_features(fake_pair_g)
+            g_fm = feature_matching_loss(real_feats, fake_feats)
+            g_fm_val = g_fm.item()
+        else:
+            fake_maps_g = self.discriminator(fake_pair_g)
+            g_fm = None
+
         g_adv = multiscale_generator_loss(fake_maps_g, self.loss_type)
         g_l1 = F.l1_loss(fake_eo, eo)
         g_loss = g_adv + self.lambda_l1 * g_l1
+
+        if g_fm is not None:
+            g_loss = g_loss + self.lambda_fm * g_fm
 
         g_vgg_val = 0.0
         if self.vgg_loss is not None:
@@ -114,7 +131,7 @@ class Pix2PixTrainer:
         g_loss.backward()
         self.opt_g.step()
 
-        return d_loss.item(), g_adv.item(), g_l1.item(), g_vgg_val
+        return d_loss.item(), g_adv.item(), g_l1.item(), g_vgg_val, g_fm_val
 
     def _save_samples(self, epoch: int) -> None:
         assert self.fixed_sar is not None and self.fixed_eo is not None
@@ -144,6 +161,7 @@ class Pix2PixTrainer:
                 "loss_type": self.cfg.training.loss_type,
                 "lambda_l1": self.lambda_l1,
                 "lambda_vgg": self.lambda_vgg,
+                "lambda_fm": self.lambda_fm,
                 "n_scales": n_scales,
                 "lr_g": self.cfg.training.lr_generator,
                 "lr_d": self.cfg.training.lr_discriminator,
@@ -158,6 +176,7 @@ class Pix2PixTrainer:
                 g_adv_losses: list[float] = []
                 g_l1_losses: list[float] = []
                 g_vgg_losses: list[float] = []
+                g_fm_losses: list[float] = []
 
                 for i, batch in enumerate(dataloader):
                     sar: torch.Tensor = batch["sar"]
@@ -167,27 +186,35 @@ class Pix2PixTrainer:
                         self.fixed_sar = sar[:8].to(self.device)
                         self.fixed_eo = eo[:8].to(self.device)
 
-                    d_loss, g_adv, g_l1, g_vgg = self._train_step(sar, eo)
+                    d_loss, g_adv, g_l1, g_vgg, g_fm = self._train_step(sar, eo)
                     d_losses.append(d_loss)
                     g_adv_losses.append(g_adv)
                     g_l1_losses.append(g_l1)
                     g_vgg_losses.append(g_vgg)
+                    g_fm_losses.append(g_fm)
 
                     if i % self.cfg.training.log_every == 0:
                         logger.info(
                             f"Epoch {epoch}/{self.cfg.training.epochs} "
                             f"[{i}/{len(dataloader)}] "
                             f"D: {d_loss:.4f}  G_adv: {g_adv:.4f}  "
-                            f"G_L1: {g_l1:.4f}  G_VGG: {g_vgg:.4f}"
+                            f"G_L1: {g_l1:.4f}  G_VGG: {g_vgg:.4f}  G_FM: {g_fm:.4f}"
                         )
 
                 avg_d = sum(d_losses) / len(d_losses)
                 avg_g_adv = sum(g_adv_losses) / len(g_adv_losses)
                 avg_g_l1 = sum(g_l1_losses) / len(g_l1_losses)
                 avg_g_vgg = sum(g_vgg_losses) / len(g_vgg_losses)
+                avg_g_fm = sum(g_fm_losses) / len(g_fm_losses)
 
                 mlflow.log_metrics(
-                    {"d_loss": avg_d, "g_adv": avg_g_adv, "g_l1": avg_g_l1, "g_vgg": avg_g_vgg},
+                    {
+                        "d_loss": avg_d,
+                        "g_adv": avg_g_adv,
+                        "g_l1": avg_g_l1,
+                        "g_vgg": avg_g_vgg,
+                        "g_fm": avg_g_fm,
+                    },
                     step=epoch,
                 )
 
@@ -202,5 +229,5 @@ class Pix2PixTrainer:
                         self.discriminator,
                         self.opt_g,
                         self.opt_d,
-                        {"d_loss": avg_d, "g_adv": avg_g_adv, "g_l1": avg_g_l1, "g_vgg": avg_g_vgg},
+                        {"d_loss": avg_d, "g_adv": avg_g_adv, "g_l1": avg_g_l1, "g_vgg": avg_g_vgg, "g_fm": avg_g_fm},
                     )

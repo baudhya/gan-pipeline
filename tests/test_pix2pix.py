@@ -100,6 +100,51 @@ def test_vgg_perceptual_loss(channels: int) -> None:
     assert zero_loss.item() < 1e-5
 
 
+def test_patchgan_forward_with_features() -> None:
+    d = PatchGANDiscriminator(sar_channels=1, eo_channels=3)
+    x = torch.randn(2, 4, 256, 256)
+    logit, features = d.forward_with_features(x)
+
+    # Logit map matches plain forward()
+    assert logit.shape == d(x).shape
+    # 4 conv blocks → 4 feature tensors, each 4-D
+    assert len(features) == 4
+    assert all(f.ndim == 4 for f in features)
+    # Features are progressively smaller (each block strides / pools)
+    for i in range(1, len(features)):
+        assert features[i].shape[-1] <= features[i - 1].shape[-1]
+
+
+@pytest.mark.parametrize("n_scales", [1, 2, 3])
+def test_multiscale_forward_with_features(n_scales: int) -> None:
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=n_scales)
+    x = torch.randn(2, 4, 256, 256)
+    logits, all_features = d.forward_with_features(x)
+
+    assert len(logits) == n_scales
+    assert len(all_features) == n_scales
+    # Each scale has 4 feature tensors (one per conv block)
+    for scale_feats in all_features:
+        assert len(scale_feats) == 4
+
+
+def test_feature_matching_loss() -> None:
+    from gan_pipeline.models.losses import feature_matching_loss
+
+    # 3 scales × 4 layers; feature shapes don't need to match disc exactly
+    real_feats = [[torch.randn(2, 64, 16, 16) for _ in range(4)] for _ in range(3)]
+    fake_feats = [[torch.randn(2, 64, 16, 16) for _ in range(4)] for _ in range(3)]
+
+    loss = feature_matching_loss(real_feats, fake_feats)
+    assert loss.shape == torch.Size([])
+    assert torch.isfinite(loss)
+    assert loss.item() >= 0.0
+
+    # Identical inputs → zero loss (real_feats used for both)
+    zero_loss = feature_matching_loss(real_feats, real_feats)
+    assert zero_loss.item() < 1e-6
+
+
 def test_multiscale_discriminator_loss() -> None:
     from gan_pipeline.models.losses import LossType, multiscale_discriminator_loss, multiscale_generator_loss
 
@@ -128,6 +173,7 @@ def test_pix2pix_train_step(loss_type: str, n_scales: int, cfg, device: torch.de
         cfg.training.loss_type = loss_type
         cfg.training.lambda_l1 = 100.0
         cfg.training.lambda_vgg = 0.0  # skip VGG to avoid network download in CI
+        cfg.training.lambda_fm = 0.0
         cfg.data.sar_channels = 1
         cfg.data.eo_channels = 3
 
@@ -139,11 +185,12 @@ def test_pix2pix_train_step(loss_type: str, n_scales: int, cfg, device: torch.de
 
     sar = torch.randn(2, 1, 256, 256)
     eo = torch.randn(2, 3, 256, 256)
-    d_loss, g_adv, g_l1, g_vgg = trainer._train_step(sar, eo)
+    d_loss, g_adv, g_l1, g_vgg, g_fm = trainer._train_step(sar, eo)
 
-    assert all(isinstance(v, float) for v in [d_loss, g_adv, g_l1, g_vgg])
-    assert all(not (v != v) for v in [d_loss, g_adv, g_l1, g_vgg])  # no NaN
+    assert all(isinstance(v, float) for v in [d_loss, g_adv, g_l1, g_vgg, g_fm])
+    assert all(not (v != v) for v in [d_loss, g_adv, g_l1, g_vgg, g_fm])  # no NaN
     assert g_vgg == 0.0  # VGG disabled
+    assert g_fm == 0.0   # FM disabled
 
 
 # --- Paired dataset ---
