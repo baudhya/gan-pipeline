@@ -49,7 +49,7 @@ Pix2pix is the standard conditional image-to-image translation framework. Unlike
 - Experiment tracking via [MLflow](https://mlflow.org/) out of the box
 - Multi-scale discriminator for both local texture and global structure discrimination
 - Synchronized data augmentation across SAR/EO pairs
-- 64 passing tests with parametrized coverage of shapes, loss types, and scales
+- 67 passing tests with parametrized coverage of shapes, loss types, and scales
 - Docker + docker-compose for reproducible deployment
 - GitHub Actions CI pipeline (lint → typecheck → test)
 
@@ -116,8 +116,8 @@ Input SAR  (1 or 3 ch, 256×256)
 - `src/gan_pipeline/models/multiscale_disc.py` — multi-scale wrapper
 
 **Classes:**
-- `PatchGANDiscriminator(sar_channels, eo_channels, base_features=64)`
-- `MultiScaleDiscriminator(sar_channels, eo_channels, base_features=64, n_scales=3)`
+- `PatchGANDiscriminator(sar_channels, eo_channels, base_features=64, spectral_norm=False)`
+- `MultiScaleDiscriminator(sar_channels, eo_channels, base_features=64, n_scales=3, spectral_norm=False)`
 
 #### Why PatchGAN?
 
@@ -173,6 +173,18 @@ Input pair (B, 4, 256, 256)
 With a single 70×70 PatchGAN on 256×256 images, the discriminator only evaluates small patches and can miss large-scale coherence (e.g., building layout, road network orientation). The coarser-scale discriminators fill this gap while the fine-scale discriminator preserves texture quality.
 
 Configure the number of scales with `model.discriminator.n_scales` (default: 3).
+
+#### Spectral Normalisation
+
+When `spectral_norm=True`, `nn.utils.spectral_norm` is applied to every `Conv2d` in the discriminator after weight initialisation. This constrains the Lipschitz constant of each layer, providing cheap gradient stability without requiring a gradient penalty or changes to the loss function.
+
+```
+Before SN:  Conv2d.weight  ← N(0, 0.02) parameter
+After SN:   Conv2d.weight_orig  ← same initialised parameter
+            Conv2d.weight       ← weight_orig / σ_max  (computed per forward pass)
+```
+
+SN is applied **after** `_init_weights()` so `weight_orig` retains the pix2pix N(0, 0.02) initialisation. The Python default is `False` (backward compatible); the pix2pix config sets it to `true` for all production runs.
 
 ---
 
@@ -655,6 +667,7 @@ python scripts/train.py model=dcgan training=default data=celeba
 | `model.generator.base_features` | `64` | Base channel count for U-Net; doubled at each encoder level up to 512 |
 | `model.discriminator.base_features` | `64` | Base channel count for each PatchGAN |
 | `model.discriminator.n_scales` | `3` | Number of discriminator scales |
+| `model.discriminator.spectral_norm` | `true` | Apply spectral norm to all D conv layers |
 
 #### `configs/training/pix2pix.yaml`
 
@@ -901,7 +914,7 @@ CUDA_VISIBLE_DEVICES=0
 ## Running Tests
 
 ```bash
-# All tests (64 total)
+# All tests (67 total)
 pytest
 
 # Verbose output
@@ -924,7 +937,7 @@ pytest --cov=gan_pipeline --cov-report=term-missing
 |---|---|---|
 | `test_data.py` | 4 | Transform output shape (32/64/128), pixel range [-1, 1] |
 | `test_models.py` | 8 | DCGAN generator/discriminator shapes; BCE/Wasserstein/Hinge losses; gradient penalty; `sample()` |
-| `test_pix2pix.py` | 25 | U-Net output shape (1→3, 3→3, 1→1 ch); skip-connection gradients; PatchGAN patch map shape (~30×30) and `forward_with_features` structure; multi-scale output lengths, decreasing spatial sizes, and `forward_with_features` per scale; all loss types on multi-scale maps; VGG perceptual loss (1/3/4-channel inputs, zero on identical); feature matching loss (scalar, finite, zero on identical); train step (hinge×3scale, bce×1scale, hinge×2scale); side-by-side dataset load and augmentation |
+| `test_pix2pix.py` | 28 | U-Net output shape (1→3, 3→3, 1→1 ch); skip-connection gradients; PatchGAN patch map shape (~30×30), spectral norm on/off (weight_orig presence), and `forward_with_features` structure; multi-scale output lengths, decreasing spatial sizes, SN threading, and `forward_with_features` per scale; all loss types on multi-scale maps; VGG perceptual loss (1/3/4-channel inputs, zero on identical); feature matching loss (scalar, finite, zero on identical); train step (hinge×3scale, bce×1scale, hinge×2scale); side-by-side dataset load and augmentation |
 | `test_sentinel_utils.py` | 19 | `linear_to_db` correctness and zero-safety; SAR/EO normalization ranges and clipping; `make_sar_image` channel configs (1/3ch) and input layouts (CHW/HWC); `make_eo_image` shape; `is_valid_patch` NaN/zero rejection; `make_side_by_side` shape, broadcast, spatial mismatch error, SAR-on-left |
 | `test_training.py` | 2 | Checkpoint save/load round-trip; DCGAN trainer step (finite float losses) |
 
