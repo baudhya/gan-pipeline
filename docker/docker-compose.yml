@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  train:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    volumes:
+      - ../data:/app/data
+      - ../outputs:/app/outputs
+      - ../mlruns:/app/mlruns
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    depends_on:
+      - mlflow
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.9.2
+    ports:
+      - "5000:5000"
+    volumes:
+      - ../mlruns:/mlruns
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlruns
+
+  generate:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    volumes:
+      - ../outputs:/app/outputs
+    entrypoint: ["python", "scripts/generate.py"]
+    profiles: [generate]

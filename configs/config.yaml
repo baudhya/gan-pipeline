@@ -1,0 +1,11 @@
+defaults:
+  - model: pix2pix
+  - training: pix2pix
+  - data: sar_eo
+  - _self_
+
+project_name: gan-pipeline
+experiment_name: sar_eo_pix2pix
+seed: 42
+output_dir: outputs/${experiment_name}
+resume: null

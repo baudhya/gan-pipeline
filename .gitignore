@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+
+# ML artifacts
+outputs/
+mlruns/
+data/
+*.pt
+*.pth
+
+# Tools
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# OS
+.DS_Store
+.idea/
+.vscode/
+*.log

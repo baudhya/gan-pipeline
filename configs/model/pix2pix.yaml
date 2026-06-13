@@ -1,0 +1,6 @@
+name: pix2pix
+generator:
+  base_features: 64
+discriminator:
+  base_features: 64
+  n_scales: 3       # number of PatchGAN scales (1 = single-scale)
