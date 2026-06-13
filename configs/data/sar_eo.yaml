@@ -1,0 +1,7 @@
+name: sar_eo
+root: data/sar_eo
+image_size: 256
+sar_channels: 1     # 1=grayscale SAR, 3=multi-pol (HH/HV/VV)
+eo_channels: 3      # RGB optical
+dataset_format: side_by_side   # side_by_side | separate_dirs
+augment_train: true

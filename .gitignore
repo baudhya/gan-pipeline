@@ -12,7 +12,7 @@ venv/
 # ML artifacts
 outputs/
 mlruns/
-data/
+/data/
 *.pt
 *.pth
 

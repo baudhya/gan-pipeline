@@ -19,6 +19,15 @@ typecheck:
 test:
 	pytest
 
+prepare-data:
+	python scripts/prepare_data.py \
+	  --mode sen12ms \
+	  --s1-dir data/raw/s1 \
+	  --s2-dir data/raw/s2 \
+	  --output-dir data/sar_eo \
+	  --sar-already-db \
+	  --sar-channels 1
+
 train:
 	python scripts/train_pix2pix.py
 
