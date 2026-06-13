@@ -1,5 +1,7 @@
 # GAN Pipeline
 
+[![CI](https://github.com/baudhya/gan-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/ci.yml)
+
 Production-grade SAR→EO image translation pipeline built on **pix2pix** with a **U-Net generator**, **multi-scale PatchGAN discriminator**, and **hinge loss**. Supports unconditional DCGAN training as well.
 
 ---
