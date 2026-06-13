@@ -1,5 +1,6 @@
 # GAN Pipeline
 
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![CI](https://github.com/baudhya/gan-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/ci.yml)
 [![mypy](https://github.com/baudhya/gan-pipeline/actions/workflows/mypy.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/mypy.yml)
 [![ruff](https://github.com/baudhya/gan-pipeline/actions/workflows/ruff.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/ruff.yml)
