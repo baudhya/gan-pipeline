@@ -6,7 +6,7 @@
 [![ruff](https://github.com/baudhya/gan-pipeline/actions/workflows/ruff.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/ruff.yml)
 [![pytest](https://github.com/baudhya/gan-pipeline/actions/workflows/pytest.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/pytest.yml)
 
-Production-grade SAR→EO image translation pipeline built on **pix2pix** with a **U-Net generator**, **multi-scale PatchGAN discriminator**, **hinge loss**, and **VGG perceptual loss**. Supports unconditional DCGAN training as well.
+Production-grade SAR→EO image translation pipeline built on **pix2pix** with a **U-Net generator**, **multi-scale PatchGAN discriminator**, **hinge loss**, **VGG perceptual loss**, and **feature matching loss**. Supports unconditional DCGAN training as well.
 
 ---
 
@@ -49,7 +49,7 @@ Pix2pix is the standard conditional image-to-image translation framework. Unlike
 - Experiment tracking via [MLflow](https://mlflow.org/) out of the box
 - Multi-scale discriminator for both local texture and global structure discrimination
 - Synchronized data augmentation across SAR/EO pairs
-- 59 passing tests with parametrized coverage of shapes, loss types, and scales
+- 64 passing tests with parametrized coverage of shapes, loss types, and scales
 - Docker + docker-compose for reproducible deployment
 - GitHub Actions CI pipeline (lint → typecheck → test)
 
@@ -180,7 +180,7 @@ Configure the number of scales with `model.discriminator.n_scales` (default: 3).
 
 **File:** `src/gan_pipeline/models/losses.py`
 
-Three adversarial loss types are supported, selectable via `training.loss_type`. A VGG perceptual loss can be layered on top of any of them.
+Three adversarial loss types are supported, selectable via `training.loss_type`. VGG perceptual loss and feature matching loss can be layered on top of any of them.
 
 #### Hinge Loss (default)
 
@@ -239,10 +239,40 @@ The VGG network is frozen (`requires_grad=False`) and moved to the training devi
 
 Setting `lambda_vgg: 0.0` disables the loss entirely without instantiating the VGG network — useful for CI or low-memory environments.
 
+#### Feature Matching Loss
+
+**Function:** `feature_matching_loss` in `src/gan_pipeline/models/losses.py`  
+**Methods:** `PatchGANDiscriminator.forward_with_features()`, `MultiScaleDiscriminator.forward_with_features()`
+
+Introduced in Pix2PixHD, feature matching pushes the generator to produce activations inside the discriminator that match those produced by real pairs — giving it a dense, learned training signal beyond the single scalar adversarial loss.
+
+`forward_with_features()` runs the discriminator and returns both the final patch logit map **and** the output of each intermediate conv block:
+
+```
+PatchGANDiscriminator.forward_with_features(x)
+  → (logit_map,  [feat_block1,  feat_block2,  feat_block3,  feat_block4])
+       (B,1,H,W)  (B,64,...)     (B,128,...)    (B,256,...)    (B,512,...)
+```
+
+`MultiScaleDiscriminator.forward_with_features(x)` delegates to each scale and returns:
+
+```
+(logits_list,  features_per_scale)
+ list[Tensor]  list[list[Tensor]]   — outer: scale, inner: conv block
+```
+
+The loss averages L1 distance over all `(scale, layer)` pairs:
+
+```
+L_FM = mean over (scale s, layer l) of  L1( D_s_l(fake_pair),  D_s_l(real_pair).detach() )
+```
+
+Real features are detached so gradients only flow through the fake path to update G. When `lambda_fm > 0`, `forward_with_features` is used for the generator step (one forward pass yields both logits and features); real features are extracted under `torch.no_grad()`. Setting `lambda_fm: 0.0` skips both the feature extraction and the extra discriminator forward pass on the real pair.
+
 #### Full Generator Loss
 
 ```
-L_G_total = L_G_adv + λ_L1 × L1(fake_EO, real_EO) + λ_VGG × L_VGG(fake_EO, real_EO)
+L_G_total = L_G_adv + λ_L1 × L1(fake_EO, real_EO) + λ_VGG × L_VGG(fake_EO, real_EO) + λ_FM × L_FM
 ```
 
 | Term | Default weight | Role |
@@ -250,6 +280,7 @@ L_G_total = L_G_adv + λ_L1 × L1(fake_EO, real_EO) + λ_VGG × L_VGG(fake_EO, r
 | `L_G_adv` | 1.0 | Adversarial sharpness signal from multi-scale discriminator |
 | `λ_L1 × L1` | 100.0 | Low-frequency fidelity; anchors color and structure |
 | `λ_VGG × L_VGG` | 10.0 | Perceptual texture quality; reduces checkerboard and blurry artifacts |
+| `λ_FM × L_FM` | 10.0 | Discriminator feature alignment; stabilises training and improves fine detail |
 
 ---
 
@@ -638,6 +669,7 @@ python scripts/train.py model=dcgan training=default data=celeba
 | `training.loss_type` | `hinge` | Loss function: `hinge`, `bce`, or `wasserstein` |
 | `training.lambda_l1` | `100.0` | Weight of pixel-level L1 loss term |
 | `training.lambda_vgg` | `10.0` | Weight of VGG perceptual loss; set to `0.0` to disable |
+| `training.lambda_fm` | `10.0` | Weight of feature matching loss; set to `0.0` to disable |
 | `training.save_every` | `10` | Save checkpoint every N epochs |
 | `training.sample_every` | `5` | Save sample grid every N epochs |
 | `training.log_every` | `100` | Log to console every N batches |
@@ -800,8 +832,8 @@ Saves a PNG grid to `outputs/generated/generated.png`.
 
 Every training run automatically logs to MLflow:
 
-**Logged parameters:** model name, loss type, λ_L1, λ_VGG, number of discriminator scales, learning rates, batch size  
-**Logged metrics per epoch:** `d_loss`, `g_adv`, `g_l1`, `g_vgg`
+**Logged parameters:** model name, loss type, λ_L1, λ_VGG, λ_FM, number of discriminator scales, learning rates, batch size  
+**Logged metrics per epoch:** `d_loss`, `g_adv`, `g_l1`, `g_vgg`, `g_fm`
 
 ### Start the MLflow UI
 
@@ -869,7 +901,7 @@ CUDA_VISIBLE_DEVICES=0
 ## Running Tests
 
 ```bash
-# All tests (59 total)
+# All tests (64 total)
 pytest
 
 # Verbose output
@@ -892,7 +924,7 @@ pytest --cov=gan_pipeline --cov-report=term-missing
 |---|---|---|
 | `test_data.py` | 4 | Transform output shape (32/64/128), pixel range [-1, 1] |
 | `test_models.py` | 8 | DCGAN generator/discriminator shapes; BCE/Wasserstein/Hinge losses; gradient penalty; `sample()` |
-| `test_pix2pix.py` | 20 | U-Net output shape (1→3, 3→3, 1→1 ch); skip-connection gradients; PatchGAN patch map shape (~30×30); multi-scale output lengths and decreasing spatial sizes; all loss types on multi-scale maps; VGG perceptual loss (1/3/4-channel inputs, zero on identical inputs); train step (hinge×3scale, bce×1scale, hinge×2scale); side-by-side dataset load and augmentation |
+| `test_pix2pix.py` | 25 | U-Net output shape (1→3, 3→3, 1→1 ch); skip-connection gradients; PatchGAN patch map shape (~30×30) and `forward_with_features` structure; multi-scale output lengths, decreasing spatial sizes, and `forward_with_features` per scale; all loss types on multi-scale maps; VGG perceptual loss (1/3/4-channel inputs, zero on identical); feature matching loss (scalar, finite, zero on identical); train step (hinge×3scale, bce×1scale, hinge×2scale); side-by-side dataset load and augmentation |
 | `test_sentinel_utils.py` | 19 | `linear_to_db` correctness and zero-safety; SAR/EO normalization ranges and clipping; `make_sar_image` channel configs (1/3ch) and input layouts (CHW/HWC); `make_eo_image` shape; `is_valid_patch` NaN/zero rejection; `make_side_by_side` shape, broadcast, spatial mismatch error, SAR-on-left |
 | `test_training.py` | 2 | Checkpoint save/load round-trip; DCGAN trainer step (finite float losses) |
 
@@ -944,7 +976,7 @@ Checkpoints are plain PyTorch `.pt` files:
     "discriminator": OrderedDict,   # discriminator.state_dict()
     "opt_g": dict,                  # optimizer state
     "opt_d": dict,
-    "metrics": {"d_loss": float, "g_adv": float, "g_l1": float, "g_vgg": float},
+    "metrics": {"d_loss": float, "g_adv": float, "g_l1": float, "g_vgg": float, "g_fm": float},
 }
 ```
 
