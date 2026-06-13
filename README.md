@@ -3,6 +3,7 @@
 [![CI](https://github.com/baudhya/gan-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/ci.yml)
 [![mypy](https://github.com/baudhya/gan-pipeline/actions/workflows/mypy.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/mypy.yml)
 [![ruff](https://github.com/baudhya/gan-pipeline/actions/workflows/ruff.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/ruff.yml)
+[![pytest](https://github.com/baudhya/gan-pipeline/actions/workflows/pytest.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/pytest.yml)
 
 Production-grade SAR→EO image translation pipeline built on **pix2pix** with a **U-Net generator**, **multi-scale PatchGAN discriminator**, and **hinge loss**. Supports unconditional DCGAN training as well.
 
