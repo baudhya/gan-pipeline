@@ -13,7 +13,12 @@ Production-grade SAR→EO image translation pipeline built on **pix2pix** with a
    - [Loss Functions](#loss-functions)
 3. [Project Structure](#project-structure)
 4. [Installation](#installation)
-5. [Dataset Preparation](#dataset-preparation)
+5. [Data Preparation](#data-preparation)
+   - [prepare_data.py — Sentinel-1/2 pipeline](#prepare_datapy--sentinel-12-pipeline)
+   - [SAR preprocessing](#sar-preprocessing)
+   - [EO preprocessing](#eo-preprocessing)
+   - [Training data formats](#training-data-formats)
+   - [Data augmentation](#data-augmentation)
 6. [Configuration System](#configuration-system)
 7. [Training](#training)
 8. [Evaluation](#evaluation)
@@ -33,11 +38,12 @@ This pipeline translates **SAR (Synthetic Aperture Radar)** images to **EO (Elec
 Pix2pix is the standard conditional image-to-image translation framework. Unlike unpaired methods (CycleGAN), it trains on aligned SAR/EO pairs, which are available from satellite sources such as Sentinel-1 (SAR) + Sentinel-2 (optical).
 
 **What makes this production-grade?**
-- All hyperparameters are externalized to YAML via [Hydra](https://hydra.cc/) — no hardcoded values
+- End-to-end data pipeline from raw Sentinel GeoTIFFs → training-ready PNGs
+- All hyperparameters externalized to YAML via [Hydra](https://hydra.cc/) — no hardcoded values
 - Experiment tracking via [MLflow](https://mlflow.org/) out of the box
 - Multi-scale discriminator for both local texture and global structure discrimination
 - Synchronized data augmentation across SAR/EO pairs
-- Full pytest suite with parametrized coverage of shapes, loss types, and scales
+- 56 passing tests with parametrized coverage of shapes, loss types, and scales
 - Docker + docker-compose for reproducible deployment
 - GitHub Actions CI pipeline (lint → typecheck → test)
 
@@ -88,9 +94,9 @@ Input SAR  (1 or 3 ch, 256×256)
 **Key design choices:**
 - Encoder uses `Conv2d(4×4, stride=2)` + `BatchNorm` + `LeakyReLU(0.2)`
 - The bottleneck (`enc8`) has no BatchNorm, following the original pix2pix paper
-- Decoder uses `ConvTranspose2d(4×4, stride=2)` + `BatchNorm` + `ReLU` (non-inplace to avoid corrupting skip-connection gradients)
+- Decoder uses `ConvTranspose2d(4×4, stride=2)` + `BatchNorm` + `ReLU` (non-inplace to avoid corrupting skip-connection gradients during backward)
 - First 3 decoder blocks apply `Dropout(0.5)` to encourage stochastic output and prevent mode collapse
-- Skip connections concatenate encoder features with decoder features at matching resolutions — this is what allows the model to preserve fine spatial structure (edges, textures) while the bottleneck captures global context
+- Skip connections concatenate encoder features with decoder features at matching resolutions — this preserves fine spatial structure (edges, textures) while the bottleneck captures global context
 - Weights initialized from `N(0, 0.02)` following pix2pix convention
 
 **Parameter count (default config):** ~54 million
@@ -179,7 +185,7 @@ L_D = mean(relu(1 − real_logits)) + mean(relu(1 + fake_logits))
 L_G = −mean(fake_logits)
 ```
 
-- Real logits ≥ 1 contribute zero discriminator loss (they're already confident)
+- Real logits ≥ 1 contribute zero discriminator loss (already confident)
 - Fake logits ≤ −1 contribute zero discriminator loss (also confident)
 - The generator maximizes discriminator output without a saturating ceiling
 - Tends to produce stable gradients throughout training
@@ -232,7 +238,8 @@ gan-pipeline/
 │   ├── data/
 │   │   ├── dataset.py              # Standard ImageFolder dataloader (DCGAN)
 │   │   ├── paired_dataset.py       # SAR/EO paired dataset (side-by-side or separate dirs)
-│   │   └── transforms.py           # torchvision transform pipeline
+│   │   ├── transforms.py           # torchvision transform pipeline
+│   │   └── sentinel_utils.py       # Sentinel-1/2 preprocessing utilities (pure numpy)
 │   │
 │   ├── models/
 │   │   ├── base.py                 # BaseGenerator, BaseDiscriminator ABCs
@@ -269,16 +276,18 @@ gan-pipeline/
 │       └── celeba.yaml             # CelebA (DCGAN example)
 │
 ├── scripts/
+│   ├── prepare_data.py             # Sentinel-1/2 data preparation (argparse CLI)
 │   ├── train_pix2pix.py            # Entry point: SAR→EO pix2pix training
 │   ├── train.py                    # Entry point: unconditional DCGAN training
 │   ├── evaluate.py                 # Compute FID / IS from a checkpoint
-│   └── generate.py                 # Generate images from a DCGAN checkpoint
+│   └── generate.py                 # Generate images from a checkpoint
 │
 ├── tests/
 │   ├── conftest.py                 # Shared fixtures (device, cfg)
 │   ├── test_data.py                # Transform shape/range tests
 │   ├── test_models.py              # DCGAN shapes, losses, gradient penalty
 │   ├── test_pix2pix.py             # U-Net, PatchGAN, multi-scale, dataset, trainer
+│   ├── test_sentinel_utils.py      # SAR/EO preprocessing: normalize, assemble, validate
 │   └── test_training.py            # Checkpoint save/load, DCGAN trainer step
 │
 ├── docker/
@@ -299,102 +308,246 @@ gan-pipeline/
 
 ```bash
 # Clone the repo
-git clone <repo-url>
+git clone https://github.com/baudhya/gan-pipeline.git
 cd gan-pipeline
 
-# Install with dev dependencies
+# Core install with dev dependencies
 pip install -e ".[dev]"
 
-# For FID/IS evaluation (optional)
+# Geospatial extras — required for prepare_data.py
+pip install -e ".[geo]"
+
+# FID/IS evaluation (optional)
 pip install -e ".[eval]"
 ```
 
-For **CPU-only** environments (e.g. CI, development machines without GPU):
+For **CPU-only** environments (CI, development machines without GPU):
 
 ```bash
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-pip install -e ".[dev]"
+pip install -e ".[dev,geo]"
 ```
 
 For **CUDA** (production training):
 
 ```bash
 pip install torch torchvision  # picks up CUDA automatically
-pip install -e ".[dev]"
+pip install -e ".[dev,geo]"
 ```
+
+### Optional extras summary
+
+| Extra | Installs | Required for |
+|---|---|---|
+| `dev` | pytest, black, ruff, mypy, isort | Development and CI |
+| `geo` | rasterio, h5py | `scripts/prepare_data.py` |
+| `eval` | torch-fidelity | `scripts/evaluate.py` (FID/IS) |
 
 ---
 
-## Dataset Preparation
+## Data Preparation
 
-### Format 1: Side-by-side (default)
+### `prepare_data.py` — Sentinel-1/2 pipeline
 
-The standard pix2pix format. Each file is a single image where the **left half is SAR** and the **right half is EO**. Files can be `.jpg`, `.png`, `.tif`, or `.tiff`.
+**File:** `scripts/prepare_data.py`
+
+Converts raw Sentinel-1 (SAR) and Sentinel-2 (EO) GeoTIFF data into the side-by-side PNG format consumed by the training pipeline. Requires the `[geo]` extra (`rasterio`).
+
+#### Two input modes
+
+**`sen12ms`** — Processes the [SEN12MS benchmark dataset](https://mediatum.ub.tum.de/1474000), which ships as pre-cropped 256×256 GeoTIFF patch pairs. This is the recommended starting point for experiments.
+
+```
+SEN12MS/
+├── s1/
+│   └── ROIs1158_spring_s1_1/
+│       ├── s1_1.tif      # (2, 256, 256) float32 — VV, VH in dB
+│       ├── s1_2.tif
+│       └── ...
+└── s2/
+    └── ROIs1158_spring_s2_1/
+        ├── s2_1.tif      # (13, 256, 256) uint16 — all Sentinel-2 bands ×10000
+        ├── s2_2.tif
+        └── ...
+```
+
+Pairs are matched by `(roi_id, season, scene_id, patch_id)`. Unmatched files are skipped silently.
+
+```bash
+python scripts/prepare_data.py \
+  --mode sen12ms \
+  --s1-dir /data/SEN12MS/s1 \
+  --s2-dir /data/SEN12MS/s2 \
+  --output-dir data/sar_eo \
+  --sar-already-db \       # SEN12MS S1 data is already in dB
+  --sar-channels 1 \       # VV only; use 2 for VV+VH
+  --val-split 0.1 \
+  --test-split 0.1
+```
+
+**`scenes`** — Chips co-registered Sentinel-1 and Sentinel-2 scenes into 256×256 patches using a sliding window. Both scenes must be in the **same CRS and geographic extent** before running this script. Use [ESA SNAP](https://step.esa.int/main/toolboxes/snap/) or GDAL to coregister first.
+
+```
+raw/
+├── sentinel1/
+│   ├── scene_001.tif     # full S1 GRD scene, float32, linear power scale
+│   └── scene_002.tif
+└── sentinel2/
+    ├── scene_001.tif     # full S2 L2A scene, uint16, bands × 10000
+    └── scene_002.tif
+```
+
+```bash
+python scripts/prepare_data.py \
+  --mode scenes \
+  --s1-dir /data/raw/sentinel1 \
+  --s2-dir /data/raw/sentinel2 \
+  --output-dir data/sar_eo \
+  --image-size 256 \
+  --stride 128 \           # 50% overlap between patches
+  --min-valid-fraction 0.9
+```
+
+#### Output format
+
+Both modes produce the same output structure:
 
 ```
 data/sar_eo/
 ├── train/
-│   ├── 00001.png    # 512×256: [SAR_256×256 | EO_256×256]
-│   ├── 00002.png
+│   ├── 000001.png    # 512×256 RGB: [SAR_256×256 | EO_256×256]
+│   ├── 000002.png
 │   └── ...
-└── val/
-    ├── 00001.png
+├── val/
+│   └── ...
+└── test/
     └── ...
 ```
 
-To use this format (already the default):
+Each PNG is a side-by-side composite: **left half = SAR, right half = EO**, both normalized to uint8. The model's dataset loader splits them back at load time.
 
-```yaml
-# configs/data/sar_eo.yaml
-dataset_format: side_by_side
+---
+
+### SAR preprocessing
+
+**File:** `src/gan_pipeline/data/sentinel_utils.py` — `normalize_sar`, `make_sar_image`
+
+Sentinel-1 GRD backscatter follows this normalization pipeline:
+
+```
+raw (linear power, float32)
+  │
+  ├── [if not already_db]  10·log₁₀(max(x, 1e-10))
+  │
+  ▼
+dB values
+  │
+  clip to [sar_min_db, sar_max_db]     default: [-25, 0] dB
+  │
+  ▼
+(x − min_db) / (max_db − min_db)      → [0, 1]
+  │
+  × 255  →  uint8                      → [0, 255]
 ```
 
-### Format 2: Separate directories
+**Why [-25, 0] dB?**  
+For Sentinel-1 GRD over land, backscatter typically falls in the range -20 to -5 dB for urban areas, -15 to -8 dB for vegetation, and -25 to -15 dB for water. Clipping at -25 dB captures almost all land cover while eliminating noise at very low values. Values above 0 dB (bright targets like corner reflectors) are saturated — acceptable for translation training.
 
-SAR and EO images in separate folders. **Filenames must match** across both directories.
+**Channel options (`--sar-channels`):**
+
+| Value | Output | Contents |
+|---|---|---|
+| `1` (default) | `(H, W, 1)` grayscale | VV polarization |
+| `3` | `(H, W, 3)` pseudo-RGB | VV / VH / VV stacked |
+
+The 3-channel stacking (VV, VH, VV) is a common visualization convention that makes VV visible in red and blue channels and VH in green, providing contrast between surfaces.
+
+**`--sar-already-db`:** Skip the linear→dB conversion. Required for SEN12MS, which stores S1 data already in dB. Raw Sentinel-1 GRD products from ESA Copernicus are in linear power scale and do not need this flag.
+
+---
+
+### EO preprocessing
+
+**File:** `src/gan_pipeline/data/sentinel_utils.py` — `normalize_eo`, `make_eo_image`
+
+Sentinel-2 L2A (Bottom-of-Atmosphere) reflectance pipeline:
+
+```
+raw (uint16, reflectance × 10000)
+  │
+  ÷ 10000                              → physical reflectance [0, ~1]
+  │
+  clip to [0, refl_cap]               default: refl_cap = 0.3
+  │
+  ÷ refl_cap                          → [0, 1]
+  │
+  × 255  →  uint8                     → [0, 255]
+```
+
+**Why clip at 0.3?**  
+Most vegetated and urban surfaces have reflectance below 0.3 in the visible bands. Clipping there maximizes contrast for typical land scenes. Snow, bright sand, or cloud (reflectance > 0.5) will saturate — this is acceptable since cloudy patches are filtered out by `--min-valid-fraction`.
+
+**RGB band selection:**
+
+Sentinel-2 has 13 spectral bands. We select three for RGB output:
+
+| Natural colour channel | Sentinel-2 band | Wavelength |
+|---|---|---|
+| Red | B04 | 665 nm |
+| Green | B03 | 560 nm |
+| Blue | B02 | 490 nm |
+
+Band indices depend on the dataset's band ordering:
+- **SEN12MS** (default): bands are ordered B02, B03, B04, … → RGB indices `(2, 1, 0)`
+- **Standard ESA**: bands ordered B01, B02, B03, B04, … → use `--s2-standard-order`, indices `(3, 2, 1)`
+
+---
+
+### Training data formats
+
+After running `prepare_data.py`, the model expects one of two layouts, set in `configs/data/sar_eo.yaml`:
+
+**Format 1: Side-by-side** (`dataset_format: side_by_side`, default)
+
+Each file is a single image with SAR on the left and EO on the right. This is what `prepare_data.py` produces.
 
 ```
 data/sar_eo/
-├── trainA/          # SAR images
-│   ├── 00001.png
-│   └── ...
-├── trainB/          # EO images (same filenames as trainA)
-│   ├── 00001.png
-│   └── ...
-├── valA/
-└── valB/
+├── train/00001.png    # 512×256: [SAR | EO]
+├── val/00001.png
+└── test/00001.png
 ```
 
-To use this format:
+**Format 2: Separate directories** (`dataset_format: separate_dirs`)
 
-```yaml
-# configs/data/sar_eo.yaml  (or override on command line)
-dataset_format: separate_dirs
+SAR and EO in separate folders; filenames must match.
+
+```
+data/sar_eo/
+├── trainA/00001.png   # SAR
+├── trainB/00001.png   # EO (same filename)
+├── valA/ …  valB/ …
 ```
 
-### SAR channels
+**SAR channel config** (`data.sar_channels`):
 
-| `sar_channels` | Interpretation |
+| Value | Description |
 |---|---|
-| `1` (default) | Single-polarization (e.g. Sentinel-1 VV or VH) |
-| `3` | Multi-polarization (HH, HV, VV stacked as 3-channel image) |
+| `1` (default) | Grayscale SAR — single polarization |
+| `3` | Multi-channel SAR — VV/VH/VV stacked to RGB |
 
-Update in `configs/data/sar_eo.yaml` or override at runtime:
+---
 
-```bash
-python scripts/train_pix2pix.py data.sar_channels=3
-```
+### Data augmentation
 
-### Data augmentation (training only)
+Applied automatically during training, **synchronized** across SAR and EO so both halves of each pair receive identical spatial transforms:
 
-Applied automatically during training, synchronized across SAR and EO:
+1. Resize to `round(image_size × 1.12)` — e.g. 286×286 for 256 target
+2. `RandomCrop(image_size)` — same `(i, j, h, w)` applied to both
+3. `RandomHorizontalFlip(p=0.5)` — same flip decision for both
+4. `Normalize(mean=0.5, std=0.5)` — maps uint8 [0, 255] → float [-1, 1]
 
-1. Resize to `image_size × 1.12` (≈286×286 for 256 target)
-2. Random crop back to `image_size × image_size`
-3. Random horizontal flip (50% probability)
-4. Normalize to `[-1, 1]` using `mean=0.5, std=0.5`
-
-Disabled for validation/inference (`augment=false`).
+Augmentation is disabled for validation and inference (`augment=false`).
 
 ---
 
@@ -469,18 +622,76 @@ python scripts/train.py model=dcgan training=default data=celeba
 
 | Key | Default | Description |
 |---|---|---|
-| `data.root` | `data/sar_eo` | Path to dataset root |
+| `data.root` | `data/sar_eo` | Path to dataset root (output of `prepare_data.py`) |
 | `data.image_size` | `256` | Spatial resolution (must be power of 2, ≥ 32) |
 | `data.sar_channels` | `1` | SAR input channels (1 or 3) |
 | `data.eo_channels` | `3` | EO output channels (3 for RGB) |
 | `data.dataset_format` | `side_by_side` | `side_by_side` or `separate_dirs` |
 | `data.augment_train` | `true` | Enable crop + flip augmentation for training |
 
+### `prepare_data.py` CLI reference
+
+`prepare_data.py` uses argparse (not Hydra) since it is a one-off preprocessing step, not a training loop.
+
+```
+--mode              sen12ms | scenes                   (required)
+--s1-dir            path to Sentinel-1 root            (required)
+--s2-dir            path to Sentinel-2 root            (required)
+--output-dir        destination for PNGs               (default: data/sar_eo)
+
+SAR options:
+  --sar-channels    1 or 3                             (default: 1)
+  --sar-min-db      lower dB clip                      (default: -25)
+  --sar-max-db      upper dB clip                      (default: 0)
+  --sar-already-db  skip linear→dB (use for SEN12MS)
+
+EO options:
+  --s2-scale        raw→reflectance divisor            (default: 10000)
+  --refl-cap        reflectance saturation point       (default: 0.3)
+  --s2-standard-order  use ESA band order (B01 first)
+
+Patch options (scenes mode only):
+  --image-size      patch size in pixels               (default: 256)
+  --stride          sliding window stride              (default: image-size)
+  --min-valid-fraction  NaN/zero rejection threshold   (default: 0.8)
+
+Split:
+  --val-split       fraction for validation            (default: 0.1)
+  --test-split      fraction for test                  (default: 0.1)
+  --seed            random seed                        (default: 42)
+```
+
 ---
 
 ## Training
 
-### SAR→EO (pix2pix, recommended)
+### Step 0: prepare data
+
+```bash
+# SEN12MS (recommended for experiments)
+python scripts/prepare_data.py \
+  --mode sen12ms \
+  --s1-dir /data/SEN12MS/s1 \
+  --s2-dir /data/SEN12MS/s2 \
+  --output-dir data/sar_eo \
+  --sar-already-db
+
+# Raw co-registered scenes
+python scripts/prepare_data.py \
+  --mode scenes \
+  --s1-dir /data/raw/s1 \
+  --s2-dir /data/raw/s2 \
+  --output-dir data/sar_eo \
+  --stride 128
+```
+
+Or use the Makefile shortcut (edit paths in `Makefile` first):
+
+```bash
+make prepare-data
+```
+
+### Step 1: train
 
 ```bash
 python scripts/train_pix2pix.py
@@ -521,13 +732,8 @@ Each experiment gets its own output directory: `outputs/run_hinge_3scale/`.
 ### Unconditional DCGAN
 
 ```bash
-# Train on CelebA (or any ImageFolder-compatible dataset)
 python scripts/train.py model=dcgan training=default data=celeba
-```
-
-Or with the Makefile shortcut:
-
-```bash
+# or:
 make train-dcgan
 ```
 
@@ -538,10 +744,11 @@ make train-dcgan
 Compute **FID** (Fréchet Inception Distance) and **IS** (Inception Score) against a held-out set of real EO images.
 
 ```bash
-# Requires: pip install -e ".[eval]"   (installs torch-fidelity)
+pip install -e ".[eval]"   # installs torch-fidelity
+
 python scripts/evaluate.py \
   checkpoint=outputs/sar_eo_pix2pix/checkpoints/epoch_0199.pt \
-  real_dir=data/sar_eo/val/B \
+  real_dir=data/sar_eo/test \
   eval_samples=5000
 ```
 
@@ -568,7 +775,7 @@ Saves a PNG grid to `outputs/generated/generated.png`.
 
 Every training run automatically logs to MLflow:
 
-**Logged parameters:** model name, loss type, λ_L1, number of scales, learning rates, batch size  
+**Logged parameters:** model name, loss type, λ_L1, number of discriminator scales, learning rates, batch size  
 **Logged metrics per epoch:** `d_loss`, `g_adv`, `g_l1`
 
 ### Start the MLflow UI
@@ -637,7 +844,7 @@ CUDA_VISIBLE_DEVICES=0
 ## Running Tests
 
 ```bash
-# All tests
+# All tests (56 total)
 pytest
 
 # Verbose output
@@ -645,9 +852,10 @@ pytest -v
 
 # Single test file
 pytest tests/test_pix2pix.py -v
+pytest tests/test_sentinel_utils.py -v
 
 # Run tests matching a pattern
-pytest -k "multiscale" -v
+pytest -k "multiscale or sentinel" -v
 
 # With coverage report
 pytest --cov=gan_pipeline --cov-report=term-missing
@@ -655,24 +863,26 @@ pytest --cov=gan_pipeline --cov-report=term-missing
 
 ### Test coverage
 
-| File | What's tested |
-|---|---|
-| `test_data.py` | Transform output shape (32/64/128), pixel range [-1, 1] |
-| `test_models.py` | DCGAN generator/discriminator shapes; BCE/Wasserstein/Hinge losses; gradient penalty; `sample()` |
-| `test_pix2pix.py` | U-Net output shape (1→3, 3→3, 1→1 ch); skip-connection gradients; PatchGAN patch map shape (~30×30); multi-scale output lengths; decreasing patch sizes across scales; all loss types on multi-scale maps; train step (hinge×3scale, bce×1scale, hinge×2scale); side-by-side dataset loading and augmentation |
-| `test_training.py` | Checkpoint save/load round-trip; DCGAN trainer step (loss is finite float) |
+| File | Tests | What's covered |
+|---|---|---|
+| `test_data.py` | 4 | Transform output shape (32/64/128), pixel range [-1, 1] |
+| `test_models.py` | 8 | DCGAN generator/discriminator shapes; BCE/Wasserstein/Hinge losses; gradient penalty; `sample()` |
+| `test_pix2pix.py` | 15 | U-Net output shape (1→3, 3→3, 1→1 ch); skip-connection gradients; PatchGAN patch map shape (~30×30); multi-scale output lengths and decreasing spatial sizes; all loss types on multi-scale maps; train step (hinge×3scale, bce×1scale, hinge×2scale); side-by-side dataset load and augmentation |
+| `test_sentinel_utils.py` | 19 | `linear_to_db` correctness and zero-safety; SAR/EO normalization ranges and clipping; `make_sar_image` channel configs (1/3ch) and input layouts (CHW/HWC); `make_eo_image` shape; `is_valid_patch` NaN/zero rejection; `make_side_by_side` shape, broadcast, spatial mismatch error, SAR-on-left |
+| `test_training.py` | 2 | Checkpoint save/load round-trip; DCGAN trainer step (finite float losses) |
 
 ### Makefile shortcuts
 
 ```bash
-make install      # pip install -e ".[dev]"
-make test         # pytest
-make lint         # ruff + black --check + isort --check
-make format       # black + isort + ruff --fix (in-place)
-make typecheck    # mypy src/
-make train        # python scripts/train_pix2pix.py
-make train-dcgan  # python scripts/train.py model=dcgan ...
-make clean        # remove __pycache__, .pytest_cache, .mypy_cache, egg-info
+make install        # pip install -e ".[dev]"
+make test           # pytest
+make lint           # ruff + black --check + isort --check
+make format         # black + isort + ruff --fix (in-place)
+make typecheck      # mypy src/
+make prepare-data   # python scripts/prepare_data.py (sen12ms mode, edit paths first)
+make train          # python scripts/train_pix2pix.py
+make train-dcgan    # python scripts/train.py model=dcgan ...
+make clean          # remove __pycache__, .pytest_cache, .mypy_cache, egg-info
 ```
 
 ---
@@ -694,9 +904,13 @@ Add a new enum value to `LossType` in `losses.py` and handle it in `generator_lo
 
 Implement a new `Dataset` subclass in `src/gan_pipeline/data/paired_dataset.py` and add a branch in `get_paired_dataloader`.
 
+### Adding a new SAR/EO normalization scheme
+
+All preprocessing math is isolated in `sentinel_utils.py`. Add a new function there and call it from `prepare_data.py`. The training pipeline is unaffected since it only sees uint8 PNGs.
+
 ### Checkpoint format
 
-Checkpoints are plain PyTorch `.pt` files containing:
+Checkpoints are plain PyTorch `.pt` files:
 
 ```python
 {
