@@ -6,6 +6,7 @@ beta1: 0.5
 beta2: 0.999
 loss_type: hinge
 lambda_l1: 100.0
+lambda_vgg: 10.0
 save_every: 10
 sample_every: 5
 log_every: 100

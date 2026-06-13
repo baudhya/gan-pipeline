@@ -2,7 +2,9 @@ import math
 from enum import Enum
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.models
 
 from gan_pipeline.models.base import BaseDiscriminator
 
@@ -56,6 +58,50 @@ def multiscale_generator_loss(
     """Average generator adversarial loss across all scales."""
     losses = [generator_loss(f, loss_type) for f in fake_list]
     return torch.stack(losses).mean()
+
+
+class VGGPerceptualLoss(nn.Module):
+    """Perceptual loss using frozen VGG16 features (relu1_2, relu2_2, relu3_3, relu4_3).
+
+    Inputs are expected in [-1, 1]; they are rescaled to ImageNet-normalised [0, 1]
+    before being passed through VGG.  Arbitrary channel counts are handled: single-channel
+    tensors are expanded to 3; tensors with more than 3 channels are truncated to the
+    first 3 (RGB).
+    """
+
+    mean: torch.Tensor
+    std: torch.Tensor
+
+    def __init__(self) -> None:
+        super().__init__()
+        feats = torchvision.models.vgg16(
+            weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1
+        ).features
+        self.slice1 = feats[:4]    # relu1_2
+        self.slice2 = feats[4:9]   # relu2_2
+        self.slice3 = feats[9:16]  # relu3_3
+        self.slice4 = feats[16:23] # relu4_3
+        for p in self.parameters():
+            p.requires_grad_(False)
+        self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+        self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+
+    def _preprocess(self, x: torch.Tensor) -> torch.Tensor:
+        x = (x + 1.0) / 2.0  # [-1, 1] → [0, 1]
+        if x.shape[1] == 1:
+            x = x.expand(-1, 3, -1, -1)
+        elif x.shape[1] > 3:
+            x = x[:, :3]
+        return (x - self.mean) / self.std
+
+    def forward(self, fake: torch.Tensor, real: torch.Tensor) -> torch.Tensor:
+        fake_p, real_p = self._preprocess(fake), self._preprocess(real)
+        loss = fake_p.new_zeros(())
+        for slice_ in (self.slice1, self.slice2, self.slice3, self.slice4):
+            fake_p = slice_(fake_p)
+            real_p = slice_(real_p)
+            loss = loss + F.l1_loss(fake_p, real_p)
+        return loss
 
 
 def gradient_penalty(

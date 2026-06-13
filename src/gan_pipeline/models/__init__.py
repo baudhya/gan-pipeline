@@ -2,6 +2,7 @@ from gan_pipeline.models.base import BaseDiscriminator, BaseGenerator
 from gan_pipeline.models.dcgan import DCGANDiscriminator, DCGANGenerator
 from gan_pipeline.models.losses import (
     LossType,
+    VGGPerceptualLoss,
     discriminator_loss,
     generator_loss,
     gradient_penalty,
@@ -21,6 +22,7 @@ __all__ = [
     "PatchGANDiscriminator",
     "MultiScaleDiscriminator",
     "LossType",
+    "VGGPerceptualLoss",
     "generator_loss",
     "discriminator_loss",
     "gradient_penalty",
