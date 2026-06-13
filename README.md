@@ -6,7 +6,7 @@
 [![ruff](https://github.com/baudhya/gan-pipeline/actions/workflows/ruff.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/ruff.yml)
 [![pytest](https://github.com/baudhya/gan-pipeline/actions/workflows/pytest.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/pytest.yml)
 
-Production-grade SAR→EO image translation pipeline built on **pix2pix** with a **U-Net generator**, **multi-scale PatchGAN discriminator**, and **hinge loss**. Supports unconditional DCGAN training as well.
+Production-grade SAR→EO image translation pipeline built on **pix2pix** with a **U-Net generator**, **multi-scale PatchGAN discriminator**, **hinge loss**, and **VGG perceptual loss**. Supports unconditional DCGAN training as well.
 
 ---
 
@@ -49,7 +49,7 @@ Pix2pix is the standard conditional image-to-image translation framework. Unlike
 - Experiment tracking via [MLflow](https://mlflow.org/) out of the box
 - Multi-scale discriminator for both local texture and global structure discrimination
 - Synchronized data augmentation across SAR/EO pairs
-- 56 passing tests with parametrized coverage of shapes, loss types, and scales
+- 59 passing tests with parametrized coverage of shapes, loss types, and scales
 - Docker + docker-compose for reproducible deployment
 - GitHub Actions CI pipeline (lint → typecheck → test)
 
@@ -180,7 +180,7 @@ Configure the number of scales with `model.discriminator.n_scales` (default: 3).
 
 **File:** `src/gan_pipeline/models/losses.py`
 
-Three loss types are supported, selectable via `training.loss_type`.
+Three adversarial loss types are supported, selectable via `training.loss_type`. A VGG perceptual loss can be layered on top of any of them.
 
 #### Hinge Loss (default)
 
@@ -225,13 +225,31 @@ multiscale_generator_loss(fake_maps_list, loss_type)
 
 Both take the list of patch maps from `MultiScaleDiscriminator.forward()` and return a single scalar — the mean loss across all scales.
 
+#### VGG Perceptual Loss
+
+**Class:** `VGGPerceptualLoss` in `src/gan_pipeline/models/losses.py`
+
+Computes feature-space distance between the generated and real EO image using a frozen VGG16 backbone pretrained on ImageNet. Features are extracted at four intermediate activations — `relu1_2`, `relu2_2`, `relu3_3`, `relu4_3` — and the L1 distance is summed across all four levels.
+
+```
+L_VGG = Σ_{i=1}^{4}  L1( VGG_i(fake_EO),  VGG_i(real_EO) )
+```
+
+The VGG network is frozen (`requires_grad=False`) and moved to the training device automatically. Inputs in `[-1, 1]` are rescaled to ImageNet-normalized `[0, 1]` internally. Single-channel (grayscale) SAR inputs passed by accident are expanded to 3 channels; tensors with more than 3 channels are truncated to the first three (RGB).
+
+Setting `lambda_vgg: 0.0` disables the loss entirely without instantiating the VGG network — useful for CI or low-memory environments.
+
 #### Full Generator Loss
 
 ```
-L_G_total = L_G_adv + λ_L1 × L1(fake_EO, real_EO)
+L_G_total = L_G_adv + λ_L1 × L1(fake_EO, real_EO) + λ_VGG × L_VGG(fake_EO, real_EO)
 ```
 
-`λ_L1 = 100` by default. The L1 term pushes the generator toward the correct pixel values; the adversarial term sharpens the result beyond what pixel-level regression alone would produce.
+| Term | Default weight | Role |
+|---|---|---|
+| `L_G_adv` | 1.0 | Adversarial sharpness signal from multi-scale discriminator |
+| `λ_L1 × L1` | 100.0 | Low-frequency fidelity; anchors color and structure |
+| `λ_VGG × L_VGG` | 10.0 | Perceptual texture quality; reduces checkerboard and blurry artifacts |
 
 ---
 
@@ -619,6 +637,7 @@ python scripts/train.py model=dcgan training=default data=celeba
 | `training.beta2` | `0.999` | Adam β₂ |
 | `training.loss_type` | `hinge` | Loss function: `hinge`, `bce`, or `wasserstein` |
 | `training.lambda_l1` | `100.0` | Weight of pixel-level L1 loss term |
+| `training.lambda_vgg` | `10.0` | Weight of VGG perceptual loss; set to `0.0` to disable |
 | `training.save_every` | `10` | Save checkpoint every N epochs |
 | `training.sample_every` | `5` | Save sample grid every N epochs |
 | `training.log_every` | `100` | Log to console every N batches |
@@ -781,8 +800,8 @@ Saves a PNG grid to `outputs/generated/generated.png`.
 
 Every training run automatically logs to MLflow:
 
-**Logged parameters:** model name, loss type, λ_L1, number of discriminator scales, learning rates, batch size  
-**Logged metrics per epoch:** `d_loss`, `g_adv`, `g_l1`
+**Logged parameters:** model name, loss type, λ_L1, λ_VGG, number of discriminator scales, learning rates, batch size  
+**Logged metrics per epoch:** `d_loss`, `g_adv`, `g_l1`, `g_vgg`
 
 ### Start the MLflow UI
 
@@ -850,7 +869,7 @@ CUDA_VISIBLE_DEVICES=0
 ## Running Tests
 
 ```bash
-# All tests (56 total)
+# All tests (59 total)
 pytest
 
 # Verbose output
@@ -873,7 +892,7 @@ pytest --cov=gan_pipeline --cov-report=term-missing
 |---|---|---|
 | `test_data.py` | 4 | Transform output shape (32/64/128), pixel range [-1, 1] |
 | `test_models.py` | 8 | DCGAN generator/discriminator shapes; BCE/Wasserstein/Hinge losses; gradient penalty; `sample()` |
-| `test_pix2pix.py` | 15 | U-Net output shape (1→3, 3→3, 1→1 ch); skip-connection gradients; PatchGAN patch map shape (~30×30); multi-scale output lengths and decreasing spatial sizes; all loss types on multi-scale maps; train step (hinge×3scale, bce×1scale, hinge×2scale); side-by-side dataset load and augmentation |
+| `test_pix2pix.py` | 20 | U-Net output shape (1→3, 3→3, 1→1 ch); skip-connection gradients; PatchGAN patch map shape (~30×30); multi-scale output lengths and decreasing spatial sizes; all loss types on multi-scale maps; VGG perceptual loss (1/3/4-channel inputs, zero on identical inputs); train step (hinge×3scale, bce×1scale, hinge×2scale); side-by-side dataset load and augmentation |
 | `test_sentinel_utils.py` | 19 | `linear_to_db` correctness and zero-safety; SAR/EO normalization ranges and clipping; `make_sar_image` channel configs (1/3ch) and input layouts (CHW/HWC); `make_eo_image` shape; `is_valid_patch` NaN/zero rejection; `make_side_by_side` shape, broadcast, spatial mismatch error, SAR-on-left |
 | `test_training.py` | 2 | Checkpoint save/load round-trip; DCGAN trainer step (finite float losses) |
 
@@ -925,7 +944,7 @@ Checkpoints are plain PyTorch `.pt` files:
     "discriminator": OrderedDict,   # discriminator.state_dict()
     "opt_g": dict,                  # optimizer state
     "opt_d": dict,
-    "metrics": {"d_loss": float, "g_adv": float, "g_l1": float},
+    "metrics": {"d_loss": float, "g_adv": float, "g_l1": float, "g_vgg": float},
 }
 ```
 
