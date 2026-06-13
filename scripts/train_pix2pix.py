@@ -57,6 +57,7 @@ def main(cfg: DictConfig) -> None:
         eo_channels=cfg.data.eo_channels,
         base_features=cfg.model.discriminator.base_features,
         n_scales=cfg.model.discriminator.n_scales,
+        spectral_norm=cfg.model.discriminator.get("spectral_norm", False),
     )
 
     logger.info(f"Generator  params: {sum(p.numel() for p in generator.parameters()):,}")

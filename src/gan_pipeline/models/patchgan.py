@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.utils as nn_utils
 
 from gan_pipeline.models.base import BaseDiscriminator
 
@@ -29,6 +30,7 @@ class PatchGANDiscriminator(BaseDiscriminator):
         sar_channels: int = 1,
         eo_channels: int = 3,
         base_features: int = 64,
+        spectral_norm: bool = False,
     ) -> None:
         super().__init__()
         bf = base_features
@@ -43,6 +45,8 @@ class PatchGANDiscriminator(BaseDiscriminator):
         )
 
         self._init_weights()
+        if spectral_norm:
+            self._apply_spectral_norm()
 
     def _init_weights(self) -> None:
         for m in self.modules():
@@ -51,6 +55,11 @@ class PatchGANDiscriminator(BaseDiscriminator):
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.normal_(m.weight, 1.0, 0.02)
                 nn.init.zeros_(m.bias)  # type: ignore[arg-type]
+
+    def _apply_spectral_norm(self) -> None:
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn_utils.spectral_norm(m)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
         """x: pre-concatenated (sar, eo) tensor of shape (B, sar_ch+eo_ch, H, W)."""

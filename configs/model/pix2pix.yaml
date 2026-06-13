@@ -4,3 +4,4 @@ generator:
 discriminator:
   base_features: 64
   n_scales: 3       # number of PatchGAN scales (1 = single-scale)
+  spectral_norm: true

@@ -23,10 +23,11 @@ class MultiScaleDiscriminator(nn.Module):
         eo_channels: int = 3,
         base_features: int = 64,
         n_scales: int = 3,
+        spectral_norm: bool = False,
     ) -> None:
         super().__init__()
         self.discriminators = nn.ModuleList([
-            PatchGANDiscriminator(sar_channels, eo_channels, base_features)
+            PatchGANDiscriminator(sar_channels, eo_channels, base_features, spectral_norm)
             for _ in range(n_scales)
         ])
         # Smooth downsampling between scales; count_include_pad=False avoids border artifacts

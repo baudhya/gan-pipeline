@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
+import torch.nn as nn
 from PIL import Image
 
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
@@ -98,6 +99,32 @@ def test_vgg_perceptual_loss(channels: int) -> None:
     # Identical inputs → zero loss
     zero_loss = loss_fn(fake, fake)
     assert zero_loss.item() < 1e-5
+
+
+@pytest.mark.parametrize("spectral_norm", [True, False])
+def test_patchgan_spectral_norm(spectral_norm: bool) -> None:
+    d = PatchGANDiscriminator(sar_channels=1, eo_channels=3, spectral_norm=spectral_norm)
+    conv_layers = [m for m in d.modules() if isinstance(m, nn.Conv2d)]
+
+    if spectral_norm:
+        assert all(hasattr(m, "weight_orig") for m in conv_layers), \
+            "All Conv2d layers should have weight_orig after spectral_norm"
+    else:
+        assert not any(hasattr(m, "weight_orig") for m in conv_layers), \
+            "No Conv2d layers should have weight_orig without spectral_norm"
+
+    # Forward pass should work regardless
+    x = torch.randn(2, 4, 256, 256)
+    out = d(x)
+    assert out.shape[1] == 1
+    assert torch.isfinite(out).all()
+
+
+def test_multiscale_spectral_norm_threads_through() -> None:
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=2, spectral_norm=True)
+    for disc in d.discriminators:
+        conv_layers = [m for m in disc.modules() if isinstance(m, nn.Conv2d)]
+        assert all(hasattr(m, "weight_orig") for m in conv_layers)
 
 
 def test_patchgan_forward_with_features() -> None:
