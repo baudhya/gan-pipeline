@@ -96,15 +96,15 @@ CLI overrides: `python scripts/train_pix2pix.py training.loss_type=bce model.dis
 
 ## Skills
 
-Invoke these with `/skill-name` in Claude Code. They are not yet created as formal `.claude/skills/` files — treat this as a reference for what to build or prompt manually.
+Invoke these with `/skill-name` in Claude Code. Skill files live in `.claude/skills/`.
 
-| Skill | When to use |
-|---|---|
-| `/smoke-test` | After any model/data change — generates 50 dummy pairs and runs 3 training epochs with all losses to confirm the full loop works |
-| `/train-run` | Starting a real or experimental training run — prompts for experiment name, loss type, n_scales, lambda overrides, then fires `train_pix2pix.py` with the right CLI flags |
-| `/eval-run` | Evaluating a checkpoint — prompts for checkpoint path and real image dir, then runs FID + IS via `scripts/evaluate.py` |
-| `/new-model` | Adding a new architecture — checklist: create `models/mymodel.py`, export from `__init__.py`, add `configs/model/mymodel.yaml`, wire into training script |
-| `/prep-data` | Preparing Sentinel data — guides through `prepare_data.py` args (mode, paths, SAR channels, splits) and runs the command |
+| Skill | File | When to use |
+|---|---|---|
+| `/smoke-test` | `.claude/skills/smoke-test.md` | After any model/data change — generates 50 dummy pairs and runs 3 training epochs with all losses |
+| `/train-run` | `.claude/skills/train-run.md` | Starting a real or experimental training run — prompts for all config options then fires `train_pix2pix.py` |
+| `/eval-run` | `.claude/skills/eval-run.md` | Evaluating a checkpoint — prompts for paths then runs FID + IS via `scripts/evaluate.py` |
+| `/new-model` | `.claude/skills/new-model.md` | Adding a new architecture — step-by-step checklist from file creation to tests |
+| `/prep-data` | `.claude/skills/prep-data.md` | Preparing Sentinel data — guides through `prepare_data.py` args and runs the command |
 
 ### Key non-obvious constraints
 
