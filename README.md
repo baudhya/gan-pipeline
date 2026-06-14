@@ -19,6 +19,7 @@ Production-grade SAR→EO image translation pipeline built on **pix2pix** with a
    - [Loss Functions](#loss-functions)
 3. [Project Structure](#project-structure)
 4. [Installation](#installation)
+   - [Pre-commit hooks](#pre-commit-hooks)
 5. [Data Preparation](#data-preparation)
    - [prepare_data.py — Sentinel-1/2 pipeline](#prepare_datapy--sentinel-12-pipeline)
    - [SAR preprocessing](#sar-preprocessing)
@@ -422,9 +423,46 @@ pip install -e ".[dev,geo]"
 
 | Extra | Installs | Required for |
 |---|---|---|
-| `dev` | pytest, black, ruff, mypy, isort | Development and CI |
+| `dev` | pytest, black, ruff, mypy, isort, pre-commit | Development and CI |
 | `geo` | rasterio, h5py | `scripts/prepare_data.py` |
 | `eval` | torch-fidelity | `scripts/evaluate.py` (FID/IS) |
+
+---
+
+### Pre-commit hooks
+
+The repo ships a `.pre-commit-config.yaml` that runs **ruff**, **black**, **isort**, and **mypy** automatically before every `git commit`. Once installed, a commit is rejected if any check fails — the same gates that run in CI.
+
+**One-time setup** (after cloning or after `pip install -e ".[dev]"`):
+
+```bash
+pre-commit install
+```
+
+That's it. The hooks run on the files you've staged each time you commit.
+
+**Run manually against all files** (useful before opening a PR):
+
+```bash
+pre-commit run --all-files
+```
+
+**Skip hooks in an emergency** (e.g. a WIP commit you intend to fix up):
+
+```bash
+git commit --no-verify -m "wip: ..."
+```
+
+**What each hook checks:**
+
+| Hook | Command | Blocks commit if… |
+|---|---|---|
+| `ruff lint` | `ruff check src tests scripts` | Any lint error (unused import, bad style, etc.) |
+| `black format check` | `black --check src tests scripts` | Any file would be reformatted |
+| `isort import check` | `isort --check-only src tests scripts` | Imports are not sorted |
+| `mypy type check` | `mypy src` | Any type error in `src/` |
+
+To fix formatting issues automatically before committing, run `make format` first, then re-stage and commit.
 
 ---
 
@@ -1129,6 +1167,13 @@ make prepare-data   # python scripts/prepare_data.py (sen12ms mode, edit paths f
 make train          # python scripts/train_pix2pix.py
 make train-dcgan    # python scripts/train.py model=dcgan ...
 make clean          # remove __pycache__, .pytest_cache, .mypy_cache, egg-info
+```
+
+**Pre-commit:**
+
+```bash
+pre-commit install          # activate hooks (run once after cloning)
+pre-commit run --all-files  # run all hooks manually
 ```
 
 ---
