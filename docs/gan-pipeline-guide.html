@@ -1,0 +1,2847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SAR→EO GAN Pipeline — Complete Developer Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.7;
+    color: #1a1a2e;
+    background: #fff;
+  }
+
+  /* ── Cover page ── */
+  .cover {
+    page-break-after: always;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 80px;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    color: #fff;
+  }
+  .cover-badge {
+    font-size: 9pt;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #a78bfa;
+    margin-bottom: 24px;
+  }
+  .cover h1 {
+    font-size: 36pt;
+    font-weight: 700;
+    line-height: 1.15;
+    color: #ffffff;
+    margin-bottom: 16px;
+  }
+  .cover h1 span { color: #7c3aed; }
+  .cover .subtitle {
+    font-size: 14pt;
+    font-weight: 300;
+    color: #c4b5fd;
+    margin-bottom: 48px;
+    max-width: 520px;
+    line-height: 1.5;
+  }
+  .cover-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 10pt;
+    color: #a78bfa;
+  }
+  .cover-meta span { display: flex; align-items: center; gap: 8px; }
+  .cover-line {
+    width: 60px;
+    height: 4px;
+    background: #7c3aed;
+    border-radius: 2px;
+    margin-bottom: 32px;
+  }
+
+  /* ── TOC ── */
+  .toc-page {
+    page-break-after: always;
+    padding: 60px 72px;
+  }
+  .toc-page h2 {
+    font-size: 20pt;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 32px;
+    padding-bottom: 12px;
+    border-bottom: 3px solid #7c3aed;
+  }
+  .toc-section {
+    margin-bottom: 6px;
+  }
+  .toc-section a {
+    text-decoration: none;
+    color: #1a1a2e;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 5px 0;
+    border-bottom: 1px dotted #e0e0e0;
+    font-size: 10.5pt;
+  }
+  .toc-section a:hover { color: #7c3aed; }
+  .toc-section .toc-num {
+    font-weight: 700;
+    color: #7c3aed;
+    min-width: 32px;
+  }
+  .toc-section .toc-title { flex: 1; padding: 0 8px; }
+  .toc-section .toc-page-num { color: #999; font-size: 9pt; }
+  .toc-sub {
+    margin-left: 28px;
+    margin-bottom: 2px;
+  }
+  .toc-sub a {
+    font-size: 9.5pt;
+    color: #555;
+    border-bottom: 1px dotted #f0f0f0;
+    padding: 3px 0;
+  }
+
+  /* ── Page layout ── */
+  .chapter {
+    page-break-before: always;
+    padding: 60px 72px 60px 72px;
+  }
+  .section { padding: 0 72px 40px 72px; }
+
+  /* ── Chapter header ── */
+  .chapter-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 2px solid #e8e0ff;
+  }
+  .chapter-num {
+    font-size: 48pt;
+    font-weight: 700;
+    color: #e8e0ff;
+    line-height: 1;
+    min-width: 80px;
+  }
+  .chapter-title {
+    flex: 1;
+  }
+  .chapter-label {
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #7c3aed;
+    margin-bottom: 6px;
+  }
+  .chapter-title h1 {
+    font-size: 22pt;
+    font-weight: 700;
+    color: #1a1a2e;
+    line-height: 1.2;
+  }
+
+  /* ── Headings ── */
+  h2 {
+    font-size: 15pt;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin: 32px 0 12px 0;
+    padding-left: 12px;
+    border-left: 4px solid #7c3aed;
+  }
+  h3 {
+    font-size: 12pt;
+    font-weight: 600;
+    color: #302b63;
+    margin: 24px 0 8px 0;
+  }
+  h4 {
+    font-size: 11pt;
+    font-weight: 600;
+    color: #555;
+    margin: 16px 0 6px 0;
+  }
+
+  /* ── Body text ── */
+  p { margin-bottom: 12px; }
+
+  /* ── Info boxes ── */
+  .box {
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 20px 0;
+    font-size: 10.5pt;
+  }
+  .box-info { background: #f0f4ff; border-left: 4px solid #4f46e5; }
+  .box-warn { background: #fffbeb; border-left: 4px solid #f59e0b; }
+  .box-tip  { background: #f0fdf4; border-left: 4px solid #22c55e; }
+  .box-danger { background: #fff1f2; border-left: 4px solid #f43f5e; }
+  .box strong { display: block; margin-bottom: 4px; font-size: 9pt; letter-spacing: 1px; text-transform: uppercase; }
+  .box-info strong { color: #4f46e5; }
+  .box-warn strong { color: #d97706; }
+  .box-tip strong  { color: #16a34a; }
+  .box-danger strong { color: #e11d48; }
+
+  /* ── Code ── */
+  pre {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin: 16px 0;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 9pt;
+    line-height: 1.6;
+  }
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 9pt;
+    background: #f1eeff;
+    color: #6d28d9;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 10pt;
+  }
+  th {
+    background: #302b63;
+    color: #fff;
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 9.5pt;
+  }
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid #e8e8f0;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #f9f7ff; }
+  tr:hover td { background: #f0eeff; }
+
+  /* ── Lists ── */
+  ul, ol { margin: 10px 0 10px 24px; }
+  li { margin-bottom: 5px; }
+  ul li::marker { color: #7c3aed; }
+
+  /* ── Diagram / ASCII art ── */
+  .diagram {
+    background: #0f0c29;
+    color: #a78bfa;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 16px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9pt;
+    line-height: 1.7;
+    white-space: pre;
+  }
+
+  /* ── Step blocks ── */
+  .steps { counter-reset: step; margin: 16px 0; }
+  .step {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    align-items: flex-start;
+  }
+  .step-num {
+    min-width: 32px;
+    height: 32px;
+    background: #7c3aed;
+    color: #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 10pt;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .step-body { flex: 1; }
+  .step-body strong { color: #302b63; }
+
+  /* ── Two-column layout ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 16px 0; }
+  .col-card {
+    background: #f9f7ff;
+    border: 1px solid #e0d9ff;
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .col-card h4 { color: #7c3aed; margin-top: 0; }
+
+  /* ── Print / page ── */
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  @media print {
+    .chapter { page-break-before: always; }
+    pre { white-space: pre-wrap; word-break: break-all; }
+  }
+
+  .page-break { page-break-after: always; }
+
+  /* ── Footer ── */
+  .footer-note {
+    margin-top: 48px;
+    padding-top: 16px;
+    border-top: 1px solid #e0e0e0;
+    font-size: 8.5pt;
+    color: #999;
+    text-align: center;
+  }
+
+  /* Highlight colours in code */
+  .kw { color: #cba6f7; }
+  .cm { color: #6c7086; font-style: italic; }
+  .st { color: #a6e3a1; }
+  .nu { color: #fab387; }
+  .fn { color: #89b4fa; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ COVER -->
+<div class="cover">
+  <div class="cover-badge">Developer Guide · v1.0</div>
+  <div class="cover-line"></div>
+  <h1>SAR <span>→</span> EO<br>GAN Pipeline</h1>
+  <p class="subtitle">A complete guide for software developers — from zero knowledge to running a production-grade satellite image translation pipeline.</p>
+  <div class="cover-meta">
+    <span>&#128197; June 2026</span>
+    <span>&#128196; 16 Chapters · Setup · Models · Training · Tools</span>
+    <span>&#127775; Written for developers new to deep learning pipelines</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ TOC -->
+<div class="toc-page">
+  <h2>Table of Contents</h2>
+
+  <div class="toc-section"><a href="#ch1"><span class="toc-num">01</span><span class="toc-title">What Is This Project and Why Does It Exist?</span></a></div>
+  <div class="toc-sub"><a href="#ch1-1">What is SAR? What is EO?</a></div>
+  <div class="toc-sub"><a href="#ch1-2">What is a GAN?</a></div>
+  <div class="toc-sub"><a href="#ch1-3">What does pix2pix do?</a></div>
+
+  <div class="toc-section"><a href="#ch2"><span class="toc-num">02</span><span class="toc-title">Manual Project Setup from Scratch</span></a></div>
+  <div class="toc-sub"><a href="#ch2-1">Prerequisites</a></div>
+  <div class="toc-sub"><a href="#ch2-2">Clone and environment</a></div>
+  <div class="toc-sub"><a href="#ch2-3">Install dependencies</a></div>
+  <div class="toc-sub"><a href="#ch2-4">Verify installation</a></div>
+
+  <div class="toc-section"><a href="#ch3"><span class="toc-num">03</span><span class="toc-title">Project Structure — What Every File Does</span></a></div>
+
+  <div class="toc-section"><a href="#ch4"><span class="toc-num">04</span><span class="toc-title">Configuration System (Hydra)</span></a></div>
+
+  <div class="toc-section"><a href="#ch5"><span class="toc-num">05</span><span class="toc-title">Data Pipeline — From Raw Satellite to Training Tensors</span></a></div>
+  <div class="toc-sub"><a href="#ch5-1">Raw Sentinel data</a></div>
+  <div class="toc-sub"><a href="#ch5-2">Preprocessing (sentinel_utils.py)</a></div>
+  <div class="toc-sub"><a href="#ch5-3">Dataset classes</a></div>
+  <div class="toc-sub"><a href="#ch5-4">Augmentation</a></div>
+  <div class="toc-sub"><a href="#ch5-5">Weighted Random Sampling</a></div>
+
+  <div class="toc-section"><a href="#ch6"><span class="toc-num">06</span><span class="toc-title">Models — Architecture Deep Dive</span></a></div>
+  <div class="toc-sub"><a href="#ch6-1">U-Net Generator</a></div>
+  <div class="toc-sub"><a href="#ch6-2">PatchGAN Discriminator</a></div>
+  <div class="toc-sub"><a href="#ch6-3">Multi-Scale Discriminator</a></div>
+  <div class="toc-sub"><a href="#ch6-4">DCGAN Models</a></div>
+
+  <div class="toc-section"><a href="#ch7"><span class="toc-num">07</span><span class="toc-title">Loss Functions — What the Model Optimises and Why</span></a></div>
+
+  <div class="toc-section"><a href="#ch8"><span class="toc-num">08</span><span class="toc-title">Trainers — The Training Loop Explained</span></a></div>
+
+  <div class="toc-section"><a href="#ch9"><span class="toc-num">09</span><span class="toc-title">Makefile — Developer Shortcuts</span></a></div>
+
+  <div class="toc-section"><a href="#ch10"><span class="toc-num">10</span><span class="toc-title">Pre-commit Hooks — Automated Quality Gates</span></a></div>
+
+  <div class="toc-section"><a href="#ch11"><span class="toc-num">11</span><span class="toc-title">CI/CD Workflows (GitHub Actions)</span></a></div>
+
+  <div class="toc-section"><a href="#ch12"><span class="toc-num">12</span><span class="toc-title">MLflow — Experiment Tracking</span></a></div>
+
+  <div class="toc-section"><a href="#ch13"><span class="toc-num">13</span><span class="toc-title">Docker — Reproducible Environments</span></a></div>
+
+  <div class="toc-section"><a href="#ch14"><span class="toc-num">14</span><span class="toc-title">Claude Code Skills — AI Workflow Automation</span></a></div>
+
+  <div class="toc-section"><a href="#ch15"><span class="toc-num">15</span><span class="toc-title">Testing — How the Codebase Verifies Itself</span></a></div>
+
+  <div class="toc-section"><a href="#ch16"><span class="toc-num">16</span><span class="toc-title">End-to-End Workflow — First Training Run</span></a></div>
+
+  <div class="toc-section"><a href="#ch17"><span class="toc-num">17</span><span class="toc-title">How to Build a Custom Dataset</span></a></div>
+  <div class="toc-sub"><a href="#ch17">PyTorch dataset contract, SideBySidePairedDataset anatomy, HDF5 example, synchronized augmentation</a></div>
+
+  <div class="toc-section"><a href="#ch18"><span class="toc-num">18</span><span class="toc-title">How to Build a Custom Model</span></a></div>
+  <div class="toc-sub"><a href="#ch18">Base class contract, ResNet Generator step by step, config registration, tests</a></div>
+
+  <div class="toc-section"><a href="#ch19"><span class="toc-num">19</span><span class="toc-title">How to Build a Custom Loss Function</span></a></div>
+  <div class="toc-sub"><a href="#ch19">Loss enum, Relativistic Hinge, LPIPS perceptual loss</a></div>
+
+  <div class="toc-section"><a href="#ch20"><span class="toc-num">20</span><span class="toc-title">How to Build a New Training Workflow</span></a></div>
+  <div class="toc-sub"><a href="#ch20">Trainer skeleton, CycleGAN unpaired workflow end to end</a></div>
+
+  <div class="toc-section"><a href="#ch21"><span class="toc-num">21</span><span class="toc-title">How the CI/CD and Pre-commit Were Built</span></a></div>
+  <div class="toc-sub"><a href="#ch21">Pre-commit from scratch, GitHub Actions from scratch, MLflow integration, pyproject.toml packaging</a></div>
+
+  <div class="toc-section"><a href="#ch22"><span class="toc-num">22</span><span class="toc-title">Component Integration Map — How Everything Connects</span></a></div>
+  <div class="toc-sub"><a href="#ch22">Full call chain, tensor shape flow, config dependency map, output file origins</a></div>
+
+  <div class="toc-section"><a href="#ch23"><span class="toc-num">23</span><span class="toc-title">Managing pyproject.toml from the Command Line</span></a></div>
+  <div class="toc-sub"><a href="#ch23">uv (recommended), Poetry, pip-tools — initialise, add, remove, upgrade dependencies without editing TOML by hand</a></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH1 -->
+<div class="chapter" id="ch1">
+  <div class="chapter-header">
+    <div class="chapter-num">01</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter One</div>
+      <h1>What Is This Project and Why Does It Exist?</h1>
+    </div>
+  </div>
+
+  <div class="box box-info">
+    <strong>Who this is for</strong>
+    You are a software developer who has been handed a task: get this GAN pipeline running. You may not know what SAR is, what a GAN is, or what pix2pix does. This chapter explains all three from scratch before you touch a single line of code.
+  </div>
+
+  <h2 id="ch1-1">1.1 What is SAR? What is EO?</h2>
+  <p>Satellites orbit the Earth and take pictures. There are two major types of imaging sensors:</p>
+
+  <div class="two-col">
+    <div class="col-card">
+      <h4>SAR — Synthetic Aperture Radar</h4>
+      <p>Emits microwave radio pulses and measures what bounces back. Works through clouds, rain, and darkness. The images look strange to humans — bright areas are rough or metallic surfaces, dark areas are smooth water or pavement.</p>
+      <p><strong>Satellite:</strong> Sentinel-1 (ESA)</p>
+    </div>
+    <div class="col-card">
+      <h4>EO — Electro-Optical (Optical)</h4>
+      <p>Captures visible light like a camera. Produces natural-looking images humans understand intuitively. But it cannot see through clouds, and it only works in daylight.</p>
+      <p><strong>Satellite:</strong> Sentinel-2 (ESA)</p>
+    </div>
+  </div>
+
+  <p>The problem: most of Earth's surface is covered by clouds most of the time. SAR sees everything but is hard to interpret. Optical images are intuitive but often unavailable. <strong>The goal of this pipeline is to train a model that takes a SAR image as input and outputs a realistic-looking optical image</strong> — giving analysts the best of both worlds.</p>
+
+  <h2 id="ch1-2">1.2 What is a GAN?</h2>
+  <p>A <strong>Generative Adversarial Network (GAN)</strong> is a machine learning architecture consisting of two neural networks that compete against each other:</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">G</div>
+      <div class="step-body"><strong>Generator</strong> — takes an input and tries to produce a realistic-looking output. It starts knowing nothing and gradually learns to produce convincing images.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">D</div>
+      <div class="step-body"><strong>Discriminator</strong> — looks at images and tries to tell whether they are real (from the dataset) or fake (produced by the Generator). It also starts knowing nothing.</div>
+    </div>
+  </div>
+
+  <p>They train together in a loop. The Generator gets better at fooling the Discriminator. The Discriminator gets better at spotting fakes. Eventually the Generator produces images realistic enough that the Discriminator cannot reliably tell them apart from real ones. At that point, the Generator is useful.</p>
+
+  <div class="box box-tip">
+    <strong>Analogy</strong>
+    Think of the Generator as a counterfeiter and the Discriminator as a detective. The counterfeiter keeps improving their forgeries, the detective keeps improving their detection skills. After enough iterations, the counterfeiter is so good that the detective has to guess randomly — meaning the forgeries are indistinguishable from real currency.
+  </div>
+
+  <h2 id="ch1-3">1.3 What does pix2pix do?</h2>
+  <p><strong>pix2pix</strong> is a specific GAN architecture for <em>image-to-image translation</em> — transforming one type of image into another. Unlike a basic GAN that generates images from random noise, pix2pix takes a <em>conditioning input</em> (the SAR image) and generates an output conditioned on that input (the corresponding EO image).</p>
+
+  <p>It requires <strong>paired training data</strong>: for every SAR image, you need the matching optical image of the same location at the same time. The Sentinel-1 and Sentinel-2 satellites are both operated by ESA and their images can be co-registered (aligned) to create these pairs.</p>
+
+  <div class="diagram">
+Training pair:  [ SAR image ] ──→ Generator ──→ [ Fake EO image ]
+                                                       │
+                [ Real EO image ] ─────────────────────┤
+                                                       ↓
+                                              Discriminator
+                                           (real or fake?)</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH2 -->
+<div class="chapter" id="ch2">
+  <div class="chapter-header">
+    <div class="chapter-num">02</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Two</div>
+      <h1>Manual Project Setup from Scratch</h1>
+    </div>
+  </div>
+
+  <div class="box box-warn">
+    <strong>Note</strong>
+    This chapter covers manual setup step by step. Every command is explained — not just what to type but why you are typing it.
+  </div>
+
+  <h2 id="ch2-1">2.1 Prerequisites</h2>
+  <p>Before starting, you need these tools installed on your machine:</p>
+
+  <table>
+    <tr><th>Tool</th><th>Why you need it</th><th>Check it exists</th></tr>
+    <tr><td><code>Python 3.10+</code></td><td>The pipeline uses type hints and syntax introduced in 3.10</td><td><code>python3 --version</code></td></tr>
+    <tr><td><code>git</code></td><td>To clone the repository and manage commits</td><td><code>git --version</code></td></tr>
+    <tr><td><code>pip</code></td><td>Python package installer (comes with Python)</td><td><code>pip --version</code></td></tr>
+    <tr><td>8 GB RAM minimum</td><td>PyTorch loads large model weights into memory</td><td>Check system info</td></tr>
+    <tr><td>GPU with CUDA (optional)</td><td>Training is 20–50× faster on GPU; CPU is fine for testing</td><td><code>nvidia-smi</code></td></tr>
+  </table>
+
+  <h2 id="ch2-2">2.2 Clone and create a virtual environment</h2>
+
+  <p><strong>Step 1 — Clone the repository</strong></p>
+  <pre>git clone https://github.com/baudhya/gan-pipeline.git
+cd gan-pipeline</pre>
+
+  <p><strong>Step 2 — Create a virtual environment</strong></p>
+  <p>A virtual environment is an isolated Python installation. It keeps this project's dependencies separate from every other project on your machine so they never conflict.</p>
+<pre>python3 -m venv .venv</pre>
+
+  <p><strong>Step 3 — Activate the virtual environment</strong></p>
+  <pre># Linux / macOS
+source .venv/bin/activate
+
+# Windows
+.venv\Scripts\activate</pre>
+
+  <p>When active, your terminal prompt shows <code>(.venv)</code>. Every <code>pip install</code> and <code>python</code> command now uses the isolated environment.</p>
+
+  <h2 id="ch2-3">2.3 Install dependencies</h2>
+
+  <p><strong>Step 4 — Install PyTorch</strong></p>
+  <p>PyTorch is the deep learning framework this pipeline is built on. Install it separately first because the wheel (the binary package) differs by CUDA version.</p>
+
+<pre># CPU only (for development, CI, or if you have no GPU)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# GPU with CUDA (auto-detects your CUDA version)
+pip install torch torchvision</pre>
+
+  <p><strong>Step 5 — Install the pipeline package and dev tools</strong></p>
+<pre>pip install -e ".[dev]"</pre>
+
+  <div class="box box-info">
+    <strong>What does this command do?</strong>
+    <code>pip install -e</code> installs the package in "editable" mode — changes you make to the source code in <code>src/</code> take effect immediately without reinstalling. The <code>".[dev]"</code> part means "install this package plus the extras listed under [dev] in pyproject.toml", which includes pytest, black, ruff, mypy, isort, and pre-commit.
+  </div>
+
+  <p><strong>Step 6 — Optional extras</strong></p>
+<pre># For preparing real Sentinel-1/2 data (requires rasterio)
+pip install -e ".[geo]"
+
+# For FID / Inception Score evaluation
+pip install -e ".[eval]"</pre>
+
+  <p><strong>Step 7 — Install pre-commit hooks</strong></p>
+  <p>Pre-commit hooks are scripts that run automatically every time you do <code>git commit</code>. They check your code quality before it enters the repository.</p>
+<pre>pre-commit install</pre>
+
+  <p><strong>Step 8 — Download VGG16 weights</strong></p>
+  <p>The pipeline uses a pre-trained VGG16 network (trained on ImageNet) as a perceptual loss function. It cannot be included in the git repository because it is 528 MB. Download it once:</p>
+<pre>make download-weights</pre>
+
+  <p>This saves the file to <code>weights/vgg16-397923af.pth</code> and it is reused for all future training runs.</p>
+
+  <h2 id="ch2-4">2.4 Verify the installation</h2>
+
+  <p>Run these three commands. All should pass with no errors:</p>
+<pre>make lint         # checks code style — should say "All checks passed"
+make typecheck    # checks types — should say "Success: no issues found"
+pytest            # runs 68 tests — should say "68 passed"</pre>
+
+  <p>If all three pass, your environment is correctly set up.</p>
+
+  <p><strong>Quick smoke test</strong> (verify training works without real data):</p>
+<pre>python scripts/make_dummy_data.py   # creates 50 synthetic image pairs
+python scripts/train_pix2pix.py \
+  training.epochs=2 training.num_workers=0 training.lambda_vgg=0.0</pre>
+
+  <p>You should see loss values printed to the console. If no errors appear, the full training loop is working.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH3 -->
+<div class="chapter" id="ch3">
+  <div class="chapter-header">
+    <div class="chapter-num">03</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Three</div>
+      <h1>Project Structure — What Every File Does</h1>
+    </div>
+  </div>
+
+<div class="diagram">gan-pipeline/
+│
+├── src/gan_pipeline/               ← The Python package (importable after pip install -e ".[dev]")
+│   ├── data/
+│   │   ├── dataset.py              ← ImageFolder dataset for DCGAN (CelebA etc.)
+│   │   ├── paired_dataset.py       ← SAR/EO dataset classes + dataloader factory
+│   │   ├── transforms.py           ← torchvision preprocessing transforms
+│   │   └── sentinel_utils.py       ← SAR/EO preprocessing math (pure numpy, no rasterio)
+│   │
+│   ├── models/
+│   │   ├── base.py                 ← Abstract base classes all models inherit from
+│   │   ├── unet.py                 ← U-Net Generator (main model, 54M params)
+│   │   ├── patchgan.py             ← PatchGAN Discriminator (70×70 receptive field)
+│   │   ├── multiscale_disc.py      ← Multi-scale wrapper around PatchGAN
+│   │   ├── dcgan.py                ← DCGAN Generator + Discriminator (unconditional)
+│   │   └── losses.py               ← All loss functions (hinge, BCE, WGAN, VGG, FM)
+│   │
+│   ├── training/
+│   │   ├── pix2pix_trainer.py      ← Main training loop for SAR→EO translation
+│   │   └── trainer.py              ← Training loop for unconditional DCGAN
+│   │
+│   ├── evaluation/
+│   │   └── metrics.py              ← FID and Inception Score via torch-fidelity
+│   │
+│   ├── inference/
+│   │   └── generate.py             ← Load checkpoint and generate images
+│   │
+│   └── utils/
+│       ├── checkpointing.py        ← Save/load model checkpoints
+│       └── logging.py              ← Loguru logger setup
+│
+├── configs/                        ← Hydra YAML configuration tree
+│   ├── config.yaml                 ← Root: picks which model/training/data configs to load
+│   ├── model/pix2pix.yaml          ← U-Net + PatchGAN architecture params
+│   ├── model/dcgan.yaml            ← DCGAN architecture params
+│   ├── training/pix2pix.yaml       ← Learning rates, loss weights, epochs
+│   ├── training/default.yaml       ← DCGAN training params
+│   ├── data/sar_eo.yaml            ← Dataset paths, image size, channels
+│   └── data/celeba.yaml            ← CelebA dataset config (DCGAN example)
+│
+├── scripts/                        ← Executable entry points (run these directly)
+│   ├── train_pix2pix.py            ← START HERE for SAR→EO training
+│   ├── train.py                    ← Entry point for unconditional DCGAN
+│   ├── prepare_data.py             ← Convert Sentinel GeoTIFFs → training PNGs
+│   ├── evaluate.py                 ← Run FID/IS on a trained checkpoint
+│   ├── generate.py                 ← Generate images from a checkpoint
+│   ├── download_vgg_weights.py     ← Download VGG16 weights to weights/
+│   └── make_dummy_data.py          ← Generate synthetic SAR/EO pairs for testing
+│
+├── tests/                          ← 68 automated tests (run with pytest)
+│   ├── conftest.py                 ← Shared fixtures (device, config objects)
+│   ├── test_pix2pix.py             ← 29 tests for the main pipeline
+│   ├── test_sentinel_utils.py      ← 19 tests for preprocessing
+│   ├── test_models.py              ← 8 tests for DCGAN models and losses
+│   ├── test_data.py                ← 4 tests for transforms
+│   └── test_training.py            ← 2 tests for checkpoint and DCGAN trainer
+│
+├── docker/
+│   ├── Dockerfile                  ← PyTorch CUDA runtime image
+│   └── docker-compose.yml          ← Services: train, mlflow, generate
+│
+├── .claude/skills/                 ← Claude Code AI workflow skills
+│   ├── smoke-test.md
+│   ├── train-run.md
+│   ├── eval-run.md
+│   ├── new-model.md
+│   ├── prep-data.md
+│   └── commit.md
+│
+├── weights/                        ← VGG16 weights live here (gitignored)
+│   └── .gitkeep                    ← Keeps the empty directory in git
+│
+├── .github/workflows/
+│   ├── pre-commit.yml              ← CI: lint + typecheck + tests
+│   └── pytest.yml                  ← CI: full test suite
+│
+├── .pre-commit-config.yaml         ← Defines the 5 pre-commit hooks
+├── pyproject.toml                  ← Package metadata + all tool configuration
+├── Makefile                        ← Developer shortcuts (make train, make lint, etc.)
+├── CLAUDE.md                       ← Instructions loaded into every Claude Code session
+└── .gitignore                      ← Excludes data/, outputs/, mlflow.db, *.pth, etc.</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH4 -->
+<div class="chapter" id="ch4">
+  <div class="chapter-header">
+    <div class="chapter-num">04</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Four</div>
+      <h1>Configuration System (Hydra)</h1>
+    </div>
+  </div>
+
+  <p>All hyperparameters — learning rates, batch size, number of layers, loss weights — are stored in YAML files, not hardcoded in Python. The tool that manages this is <strong>Hydra</strong>.</p>
+
+  <h2>4.1 Why use Hydra instead of hardcoding?</h2>
+  <p>Hardcoding values like <code>lr = 0.0002</code> inside Python files means you have to edit source code every time you want to try different settings. Hydra externalises all of these into config files, which means:</p>
+  <ul>
+    <li>You can change any setting from the command line without touching Python files</li>
+    <li>Every experiment is reproducible — the config used is saved automatically</li>
+    <li>You can swap entire config groups (e.g. switch from pix2pix to DCGAN) in one flag</li>
+  </ul>
+
+  <h2>4.2 How the config tree is assembled</h2>
+  <p>The root file <code>configs/config.yaml</code> declares which sub-configs to load:</p>
+
+<pre>defaults:
+  - model: pix2pix        # loads configs/model/pix2pix.yaml
+  - training: pix2pix     # loads configs/training/pix2pix.yaml
+  - data: sar_eo          # loads configs/data/sar_eo.yaml
+  - _self_
+
+experiment_name: sar_eo_pix2pix
+seed: 42
+output_dir: outputs/${experiment_name}</pre>
+
+  <p>At runtime, Hydra merges all these files into one big config object that the training script receives.</p>
+
+  <h2>4.3 Key parameters in training/pix2pix.yaml</h2>
+
+  <table>
+    <tr><th>Parameter</th><th>Default</th><th>What it controls</th></tr>
+    <tr><td><code>epochs</code></td><td>200</td><td>How many full passes through the dataset</td></tr>
+    <tr><td><code>batch_size</code></td><td>1</td><td>Images per training step (pix2pix standard)</td></tr>
+    <tr><td><code>lr_generator</code></td><td>0.0002</td><td>Generator learning rate</td></tr>
+    <tr><td><code>lr_discriminator</code></td><td>0.0002</td><td>Discriminator learning rate</td></tr>
+    <tr><td><code>beta1</code></td><td>0.5</td><td>Adam optimiser momentum (lower = less momentum = more stable GAN)</td></tr>
+    <tr><td><code>loss_type</code></td><td>hinge</td><td>Adversarial loss: <code>hinge</code>, <code>bce</code>, <code>wasserstein</code></td></tr>
+    <tr><td><code>lambda_l1</code></td><td>100.0</td><td>Weight of pixel-level L1 loss</td></tr>
+    <tr><td><code>lambda_vgg</code></td><td>10.0</td><td>Weight of VGG perceptual loss</td></tr>
+    <tr><td><code>lambda_fm</code></td><td>10.0</td><td>Weight of feature matching loss</td></tr>
+    <tr><td><code>vgg_weights_path</code></td><td>weights/vgg16-397923af.pth</td><td>Path to VGG16 weights for offline use</td></tr>
+  </table>
+
+  <h2>4.4 Overriding from the command line</h2>
+<pre># Change the loss type
+python scripts/train_pix2pix.py training.loss_type=bce
+
+# Change multiple values at once
+python scripts/train_pix2pix.py \
+  experiment_name=my_experiment \
+  training.epochs=50 \
+  training.lambda_vgg=0.0 \
+  model.discriminator.n_scales=2
+
+# Switch to DCGAN entirely
+python scripts/train.py model=dcgan training=default data=celeba</pre>
+
+  <div class="box box-tip">
+    <strong>Tip</strong>
+    Hydra automatically saves the merged config to <code>outputs/&lt;experiment_name&gt;/.hydra/config.yaml</code> so you always know exactly what settings were used for each run.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH5 -->
+<div class="chapter" id="ch5">
+  <div class="chapter-header">
+    <div class="chapter-num">05</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Five</div>
+      <h1>Data Pipeline — From Raw Satellite to Training Tensors</h1>
+    </div>
+  </div>
+
+  <h2 id="ch5-1">5.1 Raw Sentinel data</h2>
+  <p>Raw data from ESA comes as GeoTIFF files — multi-channel raster images with geographic metadata. Before training, these must be converted to simple PNGs that PyTorch can load.</p>
+
+  <p>The conversion script is <code>scripts/prepare_data.py</code>. It supports two modes:</p>
+
+  <table>
+    <tr><th>Mode</th><th>Input</th><th>Use when…</th></tr>
+    <tr><td><code>sen12ms</code></td><td>Pre-cropped 256×256 GeoTIFF patches from the SEN12MS benchmark dataset</td><td>You have SEN12MS downloaded — fastest to get started</td></tr>
+    <tr><td><code>scenes</code></td><td>Full Sentinel-1 and Sentinel-2 scene GeoTIFFs</td><td>You have your own raw satellite data and want to chip it into patches</td></tr>
+  </table>
+
+  <p>Example command for SEN12MS:</p>
+<pre>python scripts/prepare_data.py \
+  --mode sen12ms \
+  --s1-dir /data/SEN12MS/s1 \
+  --s2-dir /data/SEN12MS/s2 \
+  --output-dir data/sar_eo \
+  --sar-already-db \      # SEN12MS stores SAR already in dB scale
+  --sar-channels 1 \      # 1 = VV only (grayscale), 3 = VV+VH+VV (pseudo-RGB)
+  --val-split 0.1 \
+  --test-split 0.1</pre>
+
+  <h2 id="ch5-2">5.2 Preprocessing (sentinel_utils.py)</h2>
+  <p>The file <code>src/gan_pipeline/data/sentinel_utils.py</code> contains pure-numpy functions that convert raw sensor values to uint8 images. No rasterio dependency — these can be imported and used anywhere.</p>
+
+  <h3>SAR preprocessing pipeline</h3>
+<div class="diagram">Raw Sentinel-1 GRD backscatter (float32, linear power scale)
+         │
+         ▼  10 · log₁₀(max(x, 1e-10))      ← convert to dB. The 1e-10 floor
+         │                                      prevents log(0) = −∞
+         ▼
+   dB values  (typically −25 dB to 0 dB for land)
+         │
+         ▼  clip to [−25, 0] dB             ← values below −25 are sensor noise;
+         │                                      values above 0 are very bright targets
+         ▼
+   (x − min_db) / (max_db − min_db)         ← normalise to [0, 1]
+         │
+         ▼  × 255 → round → uint8           ← ready to save as PNG</div>
+
+  <h3>EO preprocessing pipeline</h3>
+<div class="diagram">Raw Sentinel-2 L2A reflectance (uint16, values = reflectance × 10000)
+         │
+         ▼  ÷ 10000                          ← convert to physical reflectance [0, ~1]
+         │
+         ▼  clip to [0, 0.3]                ← most land surfaces &lt; 0.3 reflectance;
+         │                                      snow/clouds saturate — acceptable
+         ▼  ÷ 0.3                            ← normalise to [0, 1]
+         │
+         ▼  × 255 → uint8                   ← ready to save as PNG</div>
+
+  <h3>Output format</h3>
+  <p>Both SAR and EO patches are assembled into a single <strong>side-by-side PNG</strong>: SAR on the left half, EO on the right half. For 256×256 target images this is a 512×256 file.</p>
+
+<div class="diagram">┌─────────────────┬─────────────────┐
+│                 │                 │
+│   SAR 256×256   │   EO  256×256   │
+│  (grayscale or  │   (RGB optical) │
+│   pseudo-RGB)   │                 │
+│                 │                 │
+└─────────────────┴─────────────────┘
+        512 pixels wide × 256 pixels tall</div>
+
+  <p>The dataset loader splits this back at load time. Storing them together makes shuffling and splitting the dataset simpler.</p>
+
+  <h2 id="ch5-3">5.3 Dataset classes (paired_dataset.py)</h2>
+  <p>Two dataset classes handle loading:</p>
+
+  <h3>SideBySidePairedDataset</h3>
+  <p>Opens each PNG, splits it at the midpoint horizontally, returns a dict with SAR and EO tensors.</p>
+<pre>dataset = SideBySidePairedDataset(
+    root="data/sar_eo",
+    split="train",       # looks inside data/sar_eo/train/
+    image_size=256,
+    sar_channels=1,      # how many channels to use for SAR
+    eo_channels=3,       # always 3 for RGB optical
+    augment=True,        # False for val and test
+)
+# Each item: {"sar": Tensor(1, 256, 256), "eo": Tensor(3, 256, 256)}
+# Values normalised to [-1, 1]</pre>
+
+  <h3>SeparateDirPairedDataset</h3>
+  <p>Alternative layout: SAR in <code>trainA/</code>, EO in <code>trainB/</code>. Filenames must match. Useful if you already have your data in CycleGAN-style directories.</p>
+
+  <h2 id="ch5-4">5.4 Data augmentation</h2>
+  <p>Augmentation increases the effective size of the dataset by applying random transformations at load time. The key constraint: <strong>the same transformation must be applied to both SAR and EO</strong>. If you flip one, you must flip the other — otherwise the pair is no longer aligned.</p>
+
+  <p>This is achieved using <code>torchvision.transforms.functional</code> with shared random parameters:</p>
+
+  <table>
+    <tr><th>Step</th><th>What happens</th><th>Why</th></tr>
+    <tr><td>1. Resize</td><td>Both images scaled to 286×286</td><td>Makes the random crop always possible</td></tr>
+    <tr><td>2. Random crop</td><td>Same random 256×256 region cut from both</td><td>Spatial jitter without misalignment</td></tr>
+    <tr><td>3. Random horizontal flip</td><td>Same flip/no-flip decision applied to both</td><td>Doubles effective dataset size</td></tr>
+    <tr><td>4. Normalise</td><td>uint8 [0,255] → float [-1,1]</td><td>Neural networks train better on zero-centred inputs</td></tr>
+  </table>
+
+  <p>Augmentation is disabled for validation and test splits to ensure consistent evaluation.</p>
+
+  <h2 id="ch5-5">5.5 Weighted Random Sampling</h2>
+  <p>The SEN12MS dataset is not class-balanced. Forest and cropland patches make up ~65% of the data. Water and snow patches are under 2% each. If you train on this distribution as-is, the model learns forest and crops very well and performs poorly on rare classes.</p>
+
+  <p><strong>Weighted Random Sampling</strong> solves this by upsampling rare classes. Each sample is assigned a weight equal to the inverse frequency of its class. The DataLoader then samples according to these weights with replacement, so every class is seen approximately equally per epoch.</p>
+
+<pre>from collections import Counter
+from torch.utils.data import WeightedRandomSampler
+
+# land-cover class label for each training image
+train_classes = [12, 1, 17, 12, 1, ...]   # loaded from manifest.csv
+
+# weight = total_samples / count_of_this_class
+class_counts = Counter(train_classes)
+total = sum(class_counts.values())
+class_weight = {cls: total / cnt for cls, cnt in class_counts.items()}
+
+# one weight per sample
+sample_weights = [class_weight[cls] for cls in train_classes]
+
+sampler = WeightedRandomSampler(
+    weights=sample_weights,
+    num_samples=len(sample_weights),
+    replacement=True,   # same sample can appear multiple times per epoch
+)
+
+# Pass sampler instead of shuffle=True
+loader = DataLoader(dataset, batch_size=1, sampler=sampler)</pre>
+
+  <div class="box box-warn">
+    <strong>Important</strong>
+    When using a sampler, you must set <code>shuffle=False</code> in the DataLoader (or not pass it at all). Passing both <code>sampler</code> and <code>shuffle=True</code> raises an error.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH6 -->
+<div class="chapter" id="ch6">
+  <div class="chapter-header">
+    <div class="chapter-num">06</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Six</div>
+      <h1>Models — Architecture Deep Dive</h1>
+    </div>
+  </div>
+
+  <h2 id="ch6-1">6.1 U-Net Generator (models/unet.py)</h2>
+  <p><strong>Class:</strong> <code>UNetGenerator(in_channels, out_channels, base_features=64)</code></p>
+  <p><strong>Parameters:</strong> ~54 million</p>
+  <p>The generator is an 8-level U-Net. The "U" shape comes from an encoder that progressively shrinks the image, followed by a decoder that progressively restores it. Skip connections pass information directly from each encoder level to its matching decoder level.</p>
+
+<div class="diagram">SAR input (1 ch, 256×256)
+        │
+  ┌─────┴──────────────────────────────────────────┐
+  │  ENCODER — halves spatial dims at each step     │
+  │                                                  │
+  │  enc1: 256→128  (64 channels)   no BatchNorm    │──┐
+  │  enc2: 128→64   (128 ch)                        │──┤
+  │  enc3:  64→32   (256 ch)                        │──┤
+  │  enc4:  32→16   (512 ch)                        │──┤  skip
+  │  enc5:  16→8    (512 ch)                        │──┤  connections
+  │  enc6:   8→4    (512 ch)                        │──┤
+  │  enc7:   4→2    (512 ch)                        │──┤
+  │  enc8:   2→1    (512 ch)  BOTTLENECK            │──┤
+  └──────────────────────────────────────────────────┘  │
+        │                                               │
+  ┌─────┴──────────────────────────────────────────┐    │
+  │  DECODER — doubles spatial dims at each step    │    │
+  │                                                  │    │
+  │  dec1:   1→2    + skip from enc7 → 1024 ch     │◄───┤
+  │  dec2:   2→4    + skip from enc6 → 1024 ch     │◄───┤
+  │  dec3:   4→8    + skip from enc5 → 1024 ch     │◄───┤  (Dropout 0.5
+  │  dec4:   8→16   + skip from enc4 → 1024 ch     │◄───┤   on dec1-3)
+  │  dec5:  16→32   + skip from enc3 →  512 ch     │◄───┤
+  │  dec6:  32→64   + skip from enc2 →  256 ch     │◄───┤
+  │  dec7:  64→128  + skip from enc1 →  128 ch     │◄───┤
+  │  out:  128→256  → Tanh → (3 ch, 256×256)       │◄───┘
+  └──────────────────────────────────────────────────┘
+
+Fake EO output (3 ch, 256×256, values in [-1, 1])</div>
+
+  <p><strong>Why skip connections?</strong> The bottleneck (1×1 spatial) forces the network to compress all information into a tiny representation. Low-level details like edges and textures would be lost. Skip connections bypass the bottleneck by sending early-layer features directly to later decoder layers, preserving fine spatial information.</p>
+
+  <div class="box box-danger">
+    <strong>Critical Constraint — Never Change</strong>
+    All ReLU activations in the decoder use <code>ReLU(inplace=False)</code>. If you change them to <code>inplace=True</code>, PyTorch will raise a <code>RuntimeError: one of the variables needed for gradient computation has been modified by an inplace operation</code>. This is because the skip connections share tensor memory with the encoder, and inplace modification corrupts the values needed for the backward pass.
+  </div>
+
+  <h2 id="ch6-2">6.2 PatchGAN Discriminator (models/patchgan.py)</h2>
+  <p><strong>Class:</strong> <code>PatchGANDiscriminator(sar_channels, eo_channels, base_features=64, spectral_norm=False)</code></p>
+
+  <p>Instead of outputting a single "real or fake" score for the whole image, PatchGAN outputs a <em>grid of scores</em> — one score per patch of the image. Each score represents "is this patch real or fake?"</p>
+
+<div class="diagram">Input: concat([SAR, EO or fake_EO]) = (B, 4, 256, 256)
+                │
+    L1: Conv(4→64,   4×4, stride=2)  LeakyReLU  no BN    → (B,  64, 128, 128)
+    L2: Conv(64→128, 4×4, stride=2)  BN  LeakyReLU        → (B, 128,  64,  64)
+    L3: Conv(128→256,4×4, stride=2)  BN  LeakyReLU        → (B, 256,  32,  32)
+    L4: Conv(256→512,4×4, stride=1)  BN  LeakyReLU        → (B, 512,  31,  31)
+    L5: Conv(512→1,  4×4, stride=1)                       → (B,   1,  30,  30)
+                │
+    Output: (B, 1, 30, 30)  — 900 independent patch scores
+    Each score covers a 70×70 pixel receptive field in the original image</div>
+
+  <p><strong>Why PatchGAN?</strong> A full-image discriminator outputs one scalar and gives the generator a weak, diffuse signal. PatchGAN gives 900 independent feedback signals covering every region of the image — the generator gets penalised for any local patch that looks fake, producing sharper textures.</p>
+
+  <p><strong>Spectral Normalisation:</strong> When enabled (<code>spectral_norm=True</code>), <code>nn.utils.spectral_norm</code> is applied to every Conv2d layer. This constrains the Lipschitz constant of the discriminator, preventing it from becoming too powerful and destabilising training. Applied after weight initialisation so the N(0, 0.02) initialisation is preserved.</p>
+
+  <h2 id="ch6-3">6.3 Multi-Scale Discriminator (models/multiscale_disc.py)</h2>
+  <p><strong>Class:</strong> <code>MultiScaleDiscriminator(sar_channels, eo_channels, base_features=64, n_scales=3, spectral_norm=False)</code></p>
+
+  <p>Runs N independent PatchGAN discriminators on progressively downsampled versions of the input. Each discriminator has its own weights and evaluates a different aspect of the image quality.</p>
+
+<div class="diagram">Input pair (B, 4, 256, 256)
+        │
+        ├──→ D₀ at full res (256×256) → 30×30 patch map    ← fine texture, sharp edges
+        │
+     AvgPool2d(3, stride=2)   ← smooth downsampling, no aliasing
+        │
+        ├──→ D₁ at half res (128×128) → 14×14 patch map    ← mid-level structure
+        │
+     AvgPool2d(3, stride=2)
+        │
+        └──→ D₂ at quarter res (64×64) → 6×6 patch map     ← global layout, composition
+
+All three patch maps are collected in a list → losses are averaged across scales</div>
+
+  <p><strong>Why multi-scale?</strong> A single fine-scale discriminator can miss global inconsistencies — the generator might produce a locally-convincing texture that doesn't make sense globally (e.g. a forest that looks fine patch by patch but has inconsistent tree patterns across the image). The coarse-scale discriminators catch these global failures.</p>
+
+  <div class="box box-info">
+    <strong>Important implementation detail</strong>
+    <code>MultiScaleDiscriminator.forward()</code> returns a <code>list[Tensor]</code>, not a single tensor. This is why there are separate <code>multiscale_discriminator_loss()</code> and <code>multiscale_generator_loss()</code> functions in losses.py — they average the loss across all scales.
+  </div>
+
+  <h2 id="ch6-4">6.4 DCGAN Models (models/dcgan.py)</h2>
+  <p>Used only in the unconditional pipeline (<code>scripts/train.py</code>). Takes random noise, generates an image — no conditioning on SAR input. Useful for training on datasets like CelebA to verify the architecture and training loop work before tackling the harder SAR→EO task.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH7 -->
+<div class="chapter" id="ch7">
+  <div class="chapter-header">
+    <div class="chapter-num">07</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Seven</div>
+      <h1>Loss Functions — What the Model Optimises and Why</h1>
+    </div>
+  </div>
+
+  <p>The model is trained by minimising a loss function — a number that measures how bad the current output is. Multiple loss terms are combined, each measuring a different quality dimension.</p>
+
+  <h2>7.1 Adversarial Loss</h2>
+  <p>The adversarial loss is the core GAN signal — it measures how well the Generator is fooling the Discriminator.</p>
+
+  <h3>Hinge Loss (default — recommended)</h3>
+<pre>L_D = mean(relu(1 - real_logits)) + mean(relu(1 + fake_logits))
+L_G = -mean(fake_logits)</pre>
+  <p>Derived from the SVM margin objective. Real samples are rewarded only if their score is above +1; fake samples are penalised only if their score is above −1. This creates a stable "margin" that prevents gradient explosion when the discriminator is very confident.</p>
+
+  <h3>BCE Loss</h3>
+<pre>L_D = 0.5 × (BCE(real_logits, 1) + BCE(fake_logits, 0))
+L_G = BCE(fake_logits, 1)</pre>
+  <p>Standard binary cross-entropy. Simple and well-understood, but can suffer from vanishing gradients when the discriminator becomes very confident early in training.</p>
+
+  <h3>Wasserstein Loss</h3>
+<pre>L_D = mean(fake_logits) - mean(real_logits)
+L_G = -mean(fake_logits)</pre>
+  <p>Measures the "Earth Mover's Distance" between real and generated distributions. Requires gradient penalty (<code>training.gradient_penalty: true</code>) to satisfy the Lipschitz constraint — without it the discriminator can diverge.</p>
+
+  <h2>7.2 L1 Pixel Loss</h2>
+<pre>L_L1 = mean(|fake_EO - real_EO|)</pre>
+  <p>Measures the average absolute pixel difference between the generated and real image. Weight: <strong>λ_L1 = 100</strong> — much higher than the adversarial weight because pixel accuracy is a primary goal.</p>
+  <p><strong>Why L1 and not L2?</strong> L2 (mean squared error) penalises large errors more heavily, which causes the model to produce blurry outputs (the "safe" average of all possible outputs). L1 allows sharper predictions.</p>
+
+  <h2>7.3 VGG Perceptual Loss</h2>
+  <p>Pixel loss measures low-level accuracy but doesn't capture perceptual quality. Two images can look visually very different but have similar pixel-level L1 distances (e.g. a shifted version of the same image).</p>
+  <p>The perceptual loss extracts feature maps from a pre-trained VGG16 network at four intermediate layers and measures their L1 distance:</p>
+<pre>L_VGG = Σ L1(VGG_i(fake_EO), VGG_i(real_EO))   for i in {relu1_2, relu2_2, relu3_3, relu4_3}</pre>
+  <p>Each VGG layer captures increasingly abstract features:</p>
+  <table>
+    <tr><th>VGG Layer</th><th>Captures</th><th>What it encourages</th></tr>
+    <tr><td>relu1_2</td><td>Edges, colours</td><td>Sharp edges, correct colour tones</td></tr>
+    <tr><td>relu2_2</td><td>Textures</td><td>Realistic surface textures</td></tr>
+    <tr><td>relu3_3</td><td>Patterns</td><td>Mid-level structures (roads, field boundaries)</td></tr>
+    <tr><td>relu4_3</td><td>Semantics</td><td>High-level content (building vs vegetation)</td></tr>
+  </table>
+  <p>The VGG network is frozen (weights don't change during training) — it is purely a feature extractor. Weight: <strong>λ_VGG = 10</strong>.</p>
+
+  <h2>7.4 Feature Matching Loss</h2>
+  <p>Introduced in Pix2PixHD. Instead of only using the Discriminator's final output, this loss also uses the Discriminator's intermediate features:</p>
+<pre>L_FM = mean over (scale s, layer l) of: L1(D_s_l(fake_pair), D_s_l(real_pair).detach())</pre>
+  <p>This pushes the Generator to produce images that activate the Discriminator's internal features in the same way that real images do — a much richer training signal than just the final real/fake score. Weight: <strong>λ_FM = 10</strong>.</p>
+  <p>Real features are <code>.detach()</code>-ed so gradients only flow through the fake path to update the Generator.</p>
+
+  <h2>7.5 Full Generator Loss</h2>
+<div class="diagram">L_G_total = L_G_adv                         ← fool the discriminator
+          + 100.0 × L1(fake_EO, real_EO)    ← stay close to real pixels
+          +  10.0 × L_VGG(fake_EO, real_EO) ← match perceptual features
+          +  10.0 × L_FM                     ← match discriminator internals</div>
+
+  <p>Setting any lambda to 0.0 disables that loss term entirely without changing any code:</p>
+<pre>python scripts/train_pix2pix.py training.lambda_vgg=0.0 training.lambda_fm=0.0</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH8 -->
+<div class="chapter" id="ch8">
+  <div class="chapter-header">
+    <div class="chapter-num">08</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Eight</div>
+      <h1>Trainers — The Training Loop Explained</h1>
+    </div>
+  </div>
+
+  <h2>8.1 What a training loop does</h2>
+  <p>Training a neural network is a loop: show the model a batch of data, measure how wrong it is (loss), compute how to improve (gradients via backpropagation), and update the weights (optimiser step). Repeat millions of times.</p>
+
+  <p>GANs are more complex because there are two networks (G and D) that must be updated alternately.</p>
+
+  <h2>8.2 Pix2PixTrainer — one training step</h2>
+  <p><strong>File:</strong> <code>src/gan_pipeline/training/pix2pix_trainer.py</code></p>
+
+  <p>For each batch <code>{"sar": ..., "eo": ...}</code>:</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body"><strong>Generate a fake EO image</strong><br><code>fake_eo = generator(sar).detach()</code><br>The <code>.detach()</code> prevents gradients from flowing back into the Generator during the Discriminator update — we only want to update D here.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body"><strong>Update the Discriminator</strong><br>Forward the real pair <code>[sar, real_eo]</code> and the fake pair <code>[sar, fake_eo]</code> through D. Compute D loss. Backpropagate. Optimiser step.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body"><strong>Generate again (without detach)</strong><br><code>fake_eo = generator(sar)</code><br>This time we keep the computational graph so gradients can flow back into G.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body"><strong>Update the Generator</strong><br>Forward the fake pair through D. Compute G total loss (adversarial + L1 + VGG + FM). Backpropagate through both D and G. Optimiser step on G only.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body"><strong>Log and checkpoint</strong><br>Log losses to console and MLflow. Save checkpoint and sample images at configured intervals.</div>
+    </div>
+  </div>
+
+  <h2>8.3 Checkpoint format</h2>
+  <p>Checkpoints are saved as <code>.pt</code> files in <code>outputs/&lt;experiment_name&gt;/checkpoints/</code>:</p>
+<pre>{
+    "epoch": int,
+    "generator": OrderedDict,       # generator.state_dict()
+    "discriminator": OrderedDict,   # discriminator.state_dict()
+    "opt_g": dict,                  # generator optimiser state
+    "opt_d": dict,                  # discriminator optimiser state
+    "metrics": {
+        "d_loss", "g_adv", "g_l1", "g_vgg", "g_fm"
+    }
+}</pre>
+
+  <h2>8.4 Resuming from a checkpoint</h2>
+<pre>python scripts/train_pix2pix.py \
+  resume=outputs/sar_eo_pix2pix/checkpoints/epoch_0050.pt</pre>
+  <p>The trainer loads all weights and optimiser states and continues from the saved epoch.</p>
+
+  <h2>8.5 What to watch during training</h2>
+
+  <table>
+    <tr><th>Signal</th><th>Healthy</th><th>Problem</th></tr>
+    <tr><td><code>d_loss</code></td><td>0.3–1.5, oscillating</td><td>Collapses to ~0 and stays there (D overpowers G — mode collapse risk)</td></tr>
+    <tr><td><code>g_adv</code></td><td>0.5–2.0, slowly rising</td><td>Very high (>5) and rising (G cannot fool D at all)</td></tr>
+    <tr><td><code>g_l1</code></td><td>Slowly decreasing over epochs</td><td>Stuck or increasing (G not learning pixel fidelity)</td></tr>
+    <tr><td><code>g_vgg</code></td><td>Slowly decreasing</td><td>NaN (VGG weights issue or numerical instability)</td></tr>
+    <tr><td>Any loss</td><td>Finite</td><td>NaN — check learning rate (too high) or data normalisation</td></tr>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH9 -->
+<div class="chapter" id="ch9">
+  <div class="chapter-header">
+    <div class="chapter-num">09</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Nine</div>
+      <h1>Makefile — Developer Shortcuts</h1>
+    </div>
+  </div>
+
+  <p>The <code>Makefile</code> provides short memorable commands for all common tasks. Instead of remembering long command strings, you type <code>make &lt;target&gt;</code>.</p>
+
+  <table>
+    <tr><th>Command</th><th>What it runs</th><th>When to use it</th></tr>
+    <tr><td><code>make venv</code></td><td><code>python3 -m venv .venv</code> + pip upgrade</td><td>First time setup</td></tr>
+    <tr><td><code>make install</code></td><td><code>pip install -e ".[dev]"</code></td><td>After pulling new changes that added dependencies</td></tr>
+    <tr><td><code>make lint</code></td><td>ruff + black --check + isort --check</td><td>Before committing, to check code style</td></tr>
+    <tr><td><code>make format</code></td><td>black + isort + ruff --fix (in-place)</td><td>To auto-fix style issues before committing</td></tr>
+    <tr><td><code>make typecheck</code></td><td><code>mypy src/</code></td><td>To check for type errors</td></tr>
+    <tr><td><code>make test</code></td><td><code>pytest</code></td><td>Run the full test suite</td></tr>
+    <tr><td><code>make download-weights</code></td><td><code>python scripts/download_vgg_weights.py</code></td><td>One-time after cloning</td></tr>
+    <tr><td><code>make prepare-data</code></td><td><code>python scripts/prepare_data.py ...</code></td><td>When you have raw Sentinel data to prepare</td></tr>
+    <tr><td><code>make train</code></td><td><code>python scripts/train_pix2pix.py</code></td><td>Start a training run with default settings</td></tr>
+    <tr><td><code>make train-dcgan</code></td><td><code>python scripts/train.py model=dcgan ...</code></td><td>Train the unconditional DCGAN</td></tr>
+    <tr><td><code>make mlflow</code></td><td><code>mlflow ui --backend-store-uri sqlite:///mlflow.db</code></td><td>View training metrics in browser</td></tr>
+    <tr><td><code>make docker-build</code></td><td><code>docker compose build</code></td><td>Build Docker images</td></tr>
+    <tr><td><code>make docker-train</code></td><td><code>docker compose up train</code></td><td>Train inside Docker</td></tr>
+    <tr><td><code>make clean</code></td><td>Remove <code>__pycache__</code>, <code>.pytest_cache</code>, etc.</td><td>Clean up build artefacts</td></tr>
+    <tr><td><code>make clean-venv</code></td><td><code>rm -rf .venv</code></td><td>Remove the virtual environment</td></tr>
+    <tr><td><code>make clean-all</code></td><td>clean + clean-venv</td><td>Full reset</td></tr>
+  </table>
+
+  <p><strong>Overridable variables:</strong></p>
+<pre>PYTHON=python3.11 make venv      # use Python 3.11 instead of python3
+VENV_DIR=.myenv make venv        # create venv at a custom path</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH10 -->
+<div class="chapter" id="ch10">
+  <div class="chapter-header">
+    <div class="chapter-num">10</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Ten</div>
+      <h1>Pre-commit Hooks — Automated Quality Gates</h1>
+    </div>
+  </div>
+
+  <p>A <strong>pre-commit hook</strong> is a script that runs automatically every time you type <code>git commit</code> — before the commit is created. If the script fails, the commit is blocked.</p>
+
+  <p>This guarantees that no broken, unformatted, or type-error code can ever enter the repository — even accidentally.</p>
+
+  <h2>10.1 Setup (one time)</h2>
+<pre>pre-commit install</pre>
+  <p>This registers the hooks in your local <code>.git/hooks/</code> directory. You only run this once per machine after cloning.</p>
+
+  <h2>10.2 The five hooks</h2>
+
+  <table>
+    <tr><th>Hook</th><th>Tool</th><th>What it checks</th><th>How to fix failures</th></tr>
+    <tr><td>ruff lint</td><td>ruff</td><td>Unused imports, bad style (PEP8), deprecated syntax</td><td><code>ruff check --fix src tests scripts</code></td></tr>
+    <tr><td>black format</td><td>black</td><td>Code formatting (line length, spacing, quotes)</td><td><code>black src tests scripts</code></td></tr>
+    <tr><td>isort imports</td><td>isort</td><td>Import statement ordering (stdlib → third-party → local)</td><td><code>isort src tests scripts</code></td></tr>
+    <tr><td>mypy typecheck</td><td>mypy</td><td>Type annotations are correct (strict mode)</td><td>Fix the type error in the reported file</td></tr>
+    <tr><td>pytest</td><td>pytest</td><td>All 68 tests pass</td><td>Fix the failing test or the code it tests</td></tr>
+  </table>
+
+  <h2>10.3 Typical workflow</h2>
+<pre># Make your changes
+# ...edit files...
+
+# Check formatting first (fastest feedback)
+make format
+make lint
+
+# Stage your files
+git add src/gan_pipeline/models/myfile.py
+
+# Commit — all 5 hooks run automatically
+git commit -m "Add ResNet generator variant"
+
+# If a hook fails, the commit is blocked with an error message
+# Fix the issue, re-stage, and try again</pre>
+
+  <h2>10.4 Running hooks manually</h2>
+<pre># Run all hooks on all files (useful before opening a PR)
+pre-commit run --all-files
+
+# Run just one hook
+pre-commit run black --all-files</pre>
+
+  <h2>10.5 Emergency bypass</h2>
+<pre>git commit --no-verify -m "wip: in progress, do not merge"</pre>
+  <div class="box box-danger">
+    <strong>Warning</strong>
+    Only use <code>--no-verify</code> for work-in-progress commits you will fix before merging. Never use it on a commit that will be pushed to the main branch.
+  </div>
+
+  <h2>10.6 Tool configuration</h2>
+  <p>All tools share the same settings from <code>pyproject.toml</code>: line length 100, Python 3.10 target, mypy strict mode.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH11 -->
+<div class="chapter" id="ch11">
+  <div class="chapter-header">
+    <div class="chapter-num">11</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Eleven</div>
+      <h1>CI/CD Workflows (GitHub Actions)</h1>
+    </div>
+  </div>
+
+  <p><strong>CI/CD</strong> stands for Continuous Integration / Continuous Deployment. In this project it means: every time code is pushed to GitHub, automated checks run in the cloud to verify nothing is broken.</p>
+
+  <p>Two workflow files live in <code>.github/workflows/</code>:</p>
+
+  <h2>11.1 pre-commit.yml</h2>
+  <p>Runs all five pre-commit hooks (<code>pre-commit run --all-files</code>) in a fresh Ubuntu environment. This catches any case where someone bypassed pre-commit locally using <code>--no-verify</code>.</p>
+
+<pre>on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: pre-commit run --all-files</pre>
+
+  <h2>11.2 pytest.yml</h2>
+  <p>Runs the full test suite independently. Ensures tests pass even if pre-commit is configured differently on someone's machine.</p>
+
+  <h2>11.3 Status badges</h2>
+  <p>The README displays live badges for each workflow. A green badge means the last push passed all checks. A red badge means something is broken and needs attention.</p>
+
+  <div class="box box-tip">
+    <strong>Workflow for contributing changes</strong>
+    Make your changes → run <code>pre-commit run --all-files</code> locally → push → confirm both CI badges turn green → your change is safe to merge.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH12 -->
+<div class="chapter" id="ch12">
+  <div class="chapter-header">
+    <div class="chapter-num">12</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Twelve</div>
+      <h1>MLflow — Experiment Tracking</h1>
+    </div>
+  </div>
+
+  <p><strong>MLflow</strong> is a platform for tracking machine learning experiments. Every training run automatically records its configuration and metrics so you can compare experiments and reproduce results.</p>
+
+  <h2>12.1 What is logged automatically</h2>
+
+  <table>
+    <tr><th>Type</th><th>What</th><th>When</th></tr>
+    <tr><td>Parameters</td><td>loss_type, all λ values, n_scales, learning rates, batch size, model name</td><td>Once at the start of each run</td></tr>
+    <tr><td>Metrics</td><td>d_loss, g_adv, g_l1, g_vgg, g_fm</td><td>Once per epoch</td></tr>
+  </table>
+
+  <h2>12.2 Where data is stored</h2>
+  <p>MLflow 3.x stores experiment data in a local SQLite database: <code>mlflow.db</code> in the project root. This file is excluded from git by <code>.gitignore</code>.</p>
+
+  <h2>12.3 Viewing the UI</h2>
+<pre>make mlflow</pre>
+  <p>Opens at <code>http://localhost:5000</code>. The UI shows:</p>
+  <ul>
+    <li><strong>Experiments</strong> — one per unique <code>experiment_name</code> value</li>
+    <li><strong>Runs</strong> — one row per training run with all parameters and final metrics</li>
+    <li><strong>Metric charts</strong> — plot any metric over epochs, overlay multiple runs</li>
+    <li><strong>Comparison</strong> — select two or more runs to compare side by side</li>
+  </ul>
+
+  <h2>12.4 Naming experiments for comparison</h2>
+<pre># Run A — hinge loss, 3 scales
+python scripts/train_pix2pix.py experiment_name=hinge_3scale
+
+# Run B — BCE loss, 1 scale
+python scripts/train_pix2pix.py \
+  experiment_name=bce_1scale \
+  training.loss_type=bce \
+  model.discriminator.n_scales=1
+
+# View both in MLflow UI side by side
+make mlflow</pre>
+
+  <h2>12.5 Stop MLflow</h2>
+<pre>pkill -f "mlflow ui"</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH13 -->
+<div class="chapter" id="ch13">
+  <div class="chapter-header">
+    <div class="chapter-num">13</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Thirteen</div>
+      <h1>Docker — Reproducible Environments</h1>
+    </div>
+  </div>
+
+  <p><strong>Docker</strong> packages the entire environment — Python version, CUDA drivers, all dependencies — into a container that runs identically on any machine. This eliminates "works on my machine" problems.</p>
+
+  <h2>13.1 Services</h2>
+
+  <table>
+    <tr><th>Service</th><th>What it does</th><th>When to use</th></tr>
+    <tr><td><code>train</code></td><td>Runs <code>scripts/train_pix2pix.py</code> with GPU access</td><td>Production training on a GPU server</td></tr>
+    <tr><td><code>mlflow</code></td><td>MLflow tracking server at localhost:5000</td><td>When you want MLflow accessible over the network</td></tr>
+    <tr><td><code>generate</code></td><td>Runs <code>scripts/generate.py</code> to produce images from a checkpoint</td><td>Inference after training</td></tr>
+  </table>
+
+  <h2>13.2 Build and run</h2>
+<pre># Build all images (downloads PyTorch CUDA base — takes a while first time)
+make docker-build
+
+# Train
+make docker-train
+
+# Generate images from a trained checkpoint
+docker compose -f docker/docker-compose.yml \
+  --profile generate run generate \
+  checkpoint=outputs/sar_eo_pix2pix/checkpoints/epoch_0199.pt</pre>
+
+  <h2>13.3 Volumes</h2>
+  <p>The Docker setup mounts your local directories into the container so data and outputs persist after the container stops:</p>
+  <ul>
+    <li><code>data/</code> → training data is read from your host machine</li>
+    <li><code>outputs/</code> → checkpoints and sample images are saved to your host machine</li>
+    <li><code>weights/</code> → VGG16 weights are read from your host machine</li>
+    <li><code>mlruns/</code> → MLflow data persists across container restarts</li>
+  </ul>
+
+  <h2>13.4 Environment variables</h2>
+<pre>cp .env.example .env
+# Edit .env:
+MLFLOW_TRACKING_URI=http://localhost:5000
+CUDA_VISIBLE_DEVICES=0    # which GPU to use</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH14 -->
+<div class="chapter" id="ch14">
+  <div class="chapter-header">
+    <div class="chapter-num">14</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Fourteen</div>
+      <h1>Claude Code Skills — AI Workflow Automation</h1>
+    </div>
+  </div>
+
+  <p><strong>Claude Code</strong> is an AI coding assistant integrated with this project. <strong>Skills</strong> are reusable instruction modules — you invoke them with a <code>/</code> command and Claude follows the steps defined in the skill file. They are lazy-loaded, meaning they only use context when actually invoked.</p>
+
+  <p>Skill files live in <code>.claude/skills/</code>. The <code>CLAUDE.md</code> file at the project root is loaded automatically every session and gives Claude context about the project.</p>
+
+  <h2>14.1 Available skills</h2>
+
+  <table>
+    <tr><th>Skill</th><th>File</th><th>What it does</th></tr>
+    <tr><td><code>/smoke-test</code></td><td>smoke-test.md</td><td>Generates 50 dummy image pairs and runs 3 training epochs with all losses to verify the full pipeline end-to-end</td></tr>
+    <tr><td><code>/train-run</code></td><td>train-run.md</td><td>Interactively configures a named training run — prompts for experiment name, loss type, loss weights, epochs — then builds and executes the command</td></tr>
+    <tr><td><code>/eval-run</code></td><td>eval-run.md</td><td>Evaluates a checkpoint with FID and Inception Score — prompts for paths, checks dependencies, runs evaluation</td></tr>
+    <tr><td><code>/new-model</code></td><td>new-model.md</td><td>Step-by-step checklist for adding a new architecture: create file, export, add config, wire into trainer, write tests, run smoke test</td></tr>
+    <tr><td><code>/prep-data</code></td><td>prep-data.md</td><td>Guides through preparing Sentinel-1/2 data — prompts for mode, paths, channels, splits — then runs prepare_data.py</td></tr>
+    <tr><td><code>/commit</code></td><td>commit.md</td><td>Stages and commits changes following project conventions — checks git diff, drafts message, runs hooks, never adds Co-Authored-By</td></tr>
+  </table>
+
+  <h2>14.2 How to invoke a skill</h2>
+  <p>In the Claude Code chat, type the skill name:</p>
+<pre>/smoke-test</pre>
+  <p>Claude loads the skill file and follows the steps defined in it.</p>
+
+  <h2>14.3 CLAUDE.md</h2>
+  <p>The file <code>CLAUDE.md</code> at the project root is automatically loaded into every Claude Code session. It contains:</p>
+  <ul>
+    <li>All make commands and their purpose</li>
+    <li>The full architecture overview</li>
+    <li>Pre-commit hooks and CI workflows</li>
+    <li>Critical constraints (like the ReLU inplace rule)</li>
+    <li>The skills table</li>
+    <li>Git commit conventions (no Co-Authored-By)</li>
+  </ul>
+  <p>This means Claude understands the project from the first message of every session without you having to re-explain it.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH15 -->
+<div class="chapter" id="ch15">
+  <div class="chapter-header">
+    <div class="chapter-num">15</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Fifteen</div>
+      <h1>Testing — How the Codebase Verifies Itself</h1>
+    </div>
+  </div>
+
+  <p>The project has 68 automated tests that verify every major component works correctly. Tests are in the <code>tests/</code> directory and run with <code>pytest</code>.</p>
+
+  <h2>15.1 Running tests</h2>
+<pre>pytest                           # run all 68 tests
+pytest -v                        # verbose — shows each test name
+pytest tests/test_pix2pix.py     # one file
+pytest -k "vgg or feature"       # tests whose name contains these words
+pytest --cov=gan_pipeline --cov-report=term-missing   # with coverage report</pre>
+
+  <h2>15.2 What each test file covers</h2>
+
+  <table>
+    <tr><th>File</th><th>Tests</th><th>Coverage</th></tr>
+    <tr><td>test_pix2pix.py</td><td>29</td><td>U-Net output shapes, skip-connection gradients, PatchGAN patch map shapes, spectral norm, multi-scale outputs, all loss types, VGG loss (offline weights, various channel counts), feature matching loss, full train step, dataset augmentation</td></tr>
+    <tr><td>test_sentinel_utils.py</td><td>19</td><td>linear_to_db correctness and zero-safety, SAR/EO normalisation, make_sar_image channel configs, make_eo_image shape, is_valid_patch NaN/zero rejection, side-by-side assembly</td></tr>
+    <tr><td>test_models.py</td><td>8</td><td>DCGAN generator/discriminator output shapes, all three adversarial loss types, gradient penalty, sample() method</td></tr>
+    <tr><td>test_data.py</td><td>4</td><td>Transform output shape at 32/64/128 px, pixel range [-1, 1]</td></tr>
+    <tr><td>test_training.py</td><td>2</td><td>Checkpoint save/load round-trip, DCGAN trainer step with finite losses</td></tr>
+  </table>
+
+  <h2>15.3 Test conventions</h2>
+  <ul>
+    <li>All tests run on CPU — no GPU required</li>
+    <li>VGG perceptual loss tests use <code>lambda_vgg=0.0</code> to avoid requiring the 528 MB weights file</li>
+    <li>Shared fixtures (device, config) are in <code>tests/conftest.py</code></li>
+    <li>Tests are part of the pre-commit hook — every commit must pass all 68 tests</li>
+    <li>Tests verify behaviour, not implementation — if a test breaks after refactoring, something actually changed</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH16 -->
+<div class="chapter" id="ch16">
+  <div class="chapter-header">
+    <div class="chapter-num">16</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Sixteen</div>
+      <h1>End-to-End Workflow — First Training Run</h1>
+    </div>
+  </div>
+
+  <p>This chapter walks through the complete workflow from a freshly cloned repository to a finished training run. Follow these steps in order.</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <strong>Clone and create environment</strong>
+<pre>git clone https://github.com/baudhya/gan-pipeline.git
+cd gan-pipeline
+python3 -m venv .venv
+source .venv/bin/activate</pre>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <strong>Install dependencies</strong>
+<pre>pip install torch torchvision    # GPU version (CPU: add --index-url flag)
+pip install -e ".[dev]"</pre>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <strong>Install pre-commit hooks</strong>
+<pre>pre-commit install</pre>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <strong>Download VGG16 weights</strong>
+<pre>make download-weights    # ~528 MB, saves to weights/vgg16-397923af.pth</pre>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <strong>Verify installation</strong>
+<pre>make lint && make typecheck && pytest</pre>
+        <p>All should pass with no errors.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-body">
+        <strong>Prepare training data</strong>
+        <p><em>Option A — Real Sentinel data (install geo extras first):</em></p>
+<pre>pip install -e ".[geo]"
+python scripts/prepare_data.py \
+  --mode sen12ms \
+  --s1-dir /path/to/s1 \
+  --s2-dir /path/to/s2 \
+  --output-dir data/sar_eo \
+  --sar-already-db</pre>
+        <p><em>Option B — Dummy data for testing:</em></p>
+<pre>python scripts/make_dummy_data.py</pre>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">7</div>
+      <div class="step-body">
+        <strong>Start training</strong>
+<pre># With all default settings (hinge loss, 3 scales, VGG + FM enabled)
+python scripts/train_pix2pix.py experiment_name=my_first_run
+
+# Or with custom settings
+python scripts/train_pix2pix.py \
+  experiment_name=hinge_novgg \
+  training.lambda_vgg=0.0 \
+  training.lambda_fm=0.0 \
+  training.epochs=50</pre>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">8</div>
+      <div class="step-body">
+        <strong>Monitor training</strong>
+        <p>In a second terminal, launch MLflow:</p>
+<pre>make mlflow    # open http://localhost:5000</pre>
+        <p>Checkpoints are saved to <code>outputs/my_first_run/checkpoints/</code><br>
+        Sample images are saved to <code>outputs/my_first_run/samples/</code></p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">9</div>
+      <div class="step-body">
+        <strong>Evaluate a trained checkpoint</strong>
+<pre>pip install -e ".[eval]"
+python scripts/evaluate.py \
+  checkpoint=outputs/my_first_run/checkpoints/epoch_0199.pt \
+  real_dir=data/sar_eo/test \
+  eval_samples=1000</pre>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">10</div>
+      <div class="step-body">
+        <strong>Generate images from a checkpoint</strong>
+<pre>python scripts/generate.py \
+  checkpoint=outputs/my_first_run/checkpoints/epoch_0199.pt \
+  gen_output_dir=outputs/generated</pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="box box-tip">
+    <strong>You are ready</strong>
+    You now understand every component of this pipeline — what it does, why it exists, and how to operate it. For day-to-day work, use the <code>make</code> shortcuts and Claude Code skills to move faster.
+  </div>
+
+  <div class="footer-note">
+    SAR→EO GAN Pipeline — Developer Guide · June 2026 · github.com/baudhya/gan-pipeline
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH17 -->
+<div class="chapter" id="ch17">
+  <div class="chapter-header">
+    <div class="chapter-num">17</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Seventeen</div>
+      <h1>How to Build a Custom Dataset</h1>
+    </div>
+  </div>
+
+  <p>This chapter explains how to implement a new dataset class from scratch — for example, if you have a different data format than side-by-side PNGs.</p>
+
+  <h2>17.1 How PyTorch datasets work</h2>
+  <p>A PyTorch <code>Dataset</code> is any class that implements two methods:</p>
+  <ul>
+    <li><code>__len__(self)</code> — returns the total number of samples</li>
+    <li><code>__getitem__(self, idx)</code> — returns one sample given its index</li>
+  </ul>
+  <p>The <code>DataLoader</code> wraps a dataset and handles batching, shuffling, and multi-process loading automatically.</p>
+
+  <h2>17.2 Anatomy of SideBySidePairedDataset</h2>
+<pre>class SideBySidePairedDataset(Dataset[dict[str, torch.Tensor]]):
+
+    def __init__(
+        self,
+        root: str,
+        split: str,           # "train" | "val" | "test"
+        image_size: int,
+        sar_channels: int,    # 1 = grayscale, 3 = pseudo-RGB
+        eo_channels: int,
+        augment: bool,
+    ) -> None:
+        # Build a list of all PNG file paths in root/split/
+        self.files = sorted(Path(root, split).glob("*.png"))
+        self.image_size = image_size
+        self.sar_channels = sar_channels
+        self.augment = augment
+
+    def __len__(self) -> int:
+        return len(self.files)   # total number of image pairs
+
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+        img = Image.open(self.files[idx]).convert("RGB")
+
+        # Split at the horizontal midpoint
+        w, h = img.size
+        sar_img = img.crop((0, 0, w // 2, h))    # left half = SAR
+        eo_img  = img.crop((w // 2, 0, w, h))    # right half = EO
+
+        # Apply the same augmentation to both
+        sar_img, eo_img = self._augment(sar_img, eo_img)
+
+        # Convert to tensors in [-1, 1]
+        return {
+            "sar": self._to_tensor_normalized(sar_img, self.sar_channels),
+            "eo":  self._to_tensor_normalized(eo_img, 3),
+        }</pre>
+
+  <h2>17.3 Implementing your own dataset class</h2>
+  <p>Suppose you have SAR and EO in HDF5 files instead of PNGs. Here is how to implement the dataset:</p>
+<pre>import h5py
+import torch
+from torch.utils.data import Dataset
+
+class HDF5PairedDataset(Dataset[dict[str, torch.Tensor]]):
+
+    def __init__(self, h5_path: str, split: str, image_size: int) -> None:
+        self.h5_path = h5_path
+        self.split = split
+        self.image_size = image_size
+        # Count samples without loading data into memory
+        with h5py.File(h5_path, "r") as f:
+            self.length = len(f[split]["sar"])
+
+    def __len__(self) -> int:
+        return self.length
+
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+        # Open the file per call — h5py is thread-safe for reading
+        with h5py.File(self.h5_path, "r") as f:
+            sar = f[self.split]["sar"][idx]   # numpy array
+            eo  = f[self.split]["eo"][idx]
+
+        # Normalise to [-1, 1] and convert to tensor
+        sar_t = torch.from_numpy(sar).float() / 127.5 - 1.0
+        eo_t  = torch.from_numpy(eo).float()  / 127.5 - 1.0
+        return {"sar": sar_t, "eo": eo_t}
+
+# Use exactly like the built-in dataset
+from torch.utils.data import DataLoader
+dataset = HDF5PairedDataset("data/sentinel.h5", split="train", image_size=256)
+loader  = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=4)</pre>
+
+  <h2>17.4 Registering a new dataset in the factory</h2>
+  <p>The function <code>get_paired_dataloader</code> in <code>paired_dataset.py</code> reads <code>cfg.data.dataset_format</code> and instantiates the right class. To add your new format:</p>
+<pre>def get_paired_dataloader(cfg: DictConfig, split: str = "train") -> DataLoader:
+    fmt = cfg.data.dataset_format
+    if fmt == "side_by_side":
+        dataset = SideBySidePairedDataset(...)
+    elif fmt == "separate_dirs":
+        dataset = SeparateDirPairedDataset(...)
+    elif fmt == "hdf5":                       # ← add your format here
+        dataset = HDF5PairedDataset(...)
+    else:
+        raise ValueError(f"Unknown dataset_format: {fmt}")
+    return DataLoader(dataset, ...)</pre>
+
+  <p>Then set <code>dataset_format: hdf5</code> in <code>configs/data/sar_eo.yaml</code> or via CLI override.</p>
+
+  <h2>17.5 Synchronized augmentation — the key pattern</h2>
+  <p>When augmenting paired data, both images must receive <em>identical</em> spatial transforms. The pattern used in this codebase:</p>
+<pre>import torchvision.transforms.functional as TF
+import random
+
+def apply_paired_augmentation(
+    sar: Image.Image, eo: Image.Image, image_size: int
+) -> tuple[Image.Image, Image.Image]:
+    # Step 1 — resize both to slightly larger than target
+    resize_to = int(image_size * 1.12)
+    sar = TF.resize(sar, [resize_to, resize_to])
+    eo  = TF.resize(eo,  [resize_to, resize_to])
+
+    # Step 2 — compute ONE random crop, apply to BOTH
+    i, j, h, w = transforms.RandomCrop.get_params(
+        sar, output_size=(image_size, image_size)
+    )
+    sar = TF.crop(sar, i, j, h, w)
+    eo  = TF.crop(eo,  i, j, h, w)
+
+    # Step 3 — ONE flip decision, applied to BOTH
+    if random.random() > 0.5:
+        sar = TF.hflip(sar)
+        eo  = TF.hflip(eo)
+
+    return sar, eo</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH18 -->
+<div class="chapter" id="ch18">
+  <div class="chapter-header">
+    <div class="chapter-num">18</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Eighteen</div>
+      <h1>How to Build a Custom Model</h1>
+    </div>
+  </div>
+
+  <p>This chapter walks through building a new generator from scratch, registering it in the config system, and integrating it with the training pipeline.</p>
+
+  <h2>18.1 The base class contract</h2>
+  <p>Every model inherits from <code>BaseGenerator</code> or <code>BaseDiscriminator</code> in <code>models/base.py</code>. The contract:</p>
+<pre>from abc import ABC, abstractmethod
+import torch
+import torch.nn as nn
+
+class BaseGenerator(nn.Module, ABC):
+
+    @abstractmethod
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        ...  # subclass must implement this
+
+    def sample(self, n: int, device: torch.device) -> torch.Tensor:
+        # default: generate n samples from random noise
+        z = torch.randn(n, self.latent_dim, device=device)
+        return self(z)  # calls forward(z)</pre>
+
+  <h2>18.2 Building a ResNet Generator step by step</h2>
+  <p>ResNet generators (used in CycleGAN) use residual blocks instead of an encoder-decoder structure. Here is how to build one:</p>
+
+  <h3>Step 1 — Define a residual block</h3>
+<pre>class ResBlock(nn.Module):
+    """A single residual block: Conv→BN→ReLU→Conv→BN with skip add."""
+
+    def __init__(self, channels: int) -> None:
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.ReflectionPad2d(1),          # padding that doesn't create edge artefacts
+            nn.Conv2d(channels, channels, 3),
+            nn.InstanceNorm2d(channels),    # InstanceNorm works better than BN for style
+            nn.ReLU(inplace=False),         # inplace=False — always safe
+            nn.ReflectionPad2d(1),
+            nn.Conv2d(channels, channels, 3),
+            nn.InstanceNorm2d(channels),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.block(x)  # residual connection: output = input + learned delta</pre>
+
+  <h3>Step 2 — Build the full generator</h3>
+<pre>class ResNetGenerator(BaseGenerator):
+    """ResNet generator: downsample → N residual blocks → upsample."""
+
+    def __init__(
+        self,
+        in_channels: int = 1,
+        out_channels: int = 3,
+        base_features: int = 64,
+        n_blocks: int = 9,       # 9 for 256×256, 6 for 128×128
+    ) -> None:
+        super().__init__()
+
+        # Encoder — downsample to smaller spatial size
+        encoder = [
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(in_channels, base_features, 7),
+            nn.InstanceNorm2d(base_features),
+            nn.ReLU(inplace=False),
+            # Two downsampling steps: 256→128→64
+            nn.Conv2d(base_features, base_features * 2, 3, stride=2, padding=1),
+            nn.InstanceNorm2d(base_features * 2),
+            nn.ReLU(inplace=False),
+            nn.Conv2d(base_features * 2, base_features * 4, 3, stride=2, padding=1),
+            nn.InstanceNorm2d(base_features * 4),
+            nn.ReLU(inplace=False),
+        ]
+
+        # Residual blocks — process at the compressed resolution
+        res_blocks = [ResBlock(base_features * 4) for _ in range(n_blocks)]
+
+        # Decoder — upsample back to original resolution
+        decoder = [
+            nn.ConvTranspose2d(base_features * 4, base_features * 2, 3, stride=2,
+                               padding=1, output_padding=1),
+            nn.InstanceNorm2d(base_features * 2),
+            nn.ReLU(inplace=False),
+            nn.ConvTranspose2d(base_features * 2, base_features, 3, stride=2,
+                               padding=1, output_padding=1),
+            nn.InstanceNorm2d(base_features),
+            nn.ReLU(inplace=False),
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(base_features, out_channels, 7),
+            nn.Tanh(),
+        ]
+
+        self.model = nn.Sequential(*encoder, *res_blocks, *decoder)
+        self._init_weights()
+
+    def _init_weights(self) -> None:
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                nn.init.normal_(m.weight, 0.0, 0.02)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.model(x)  # type: ignore[no-any-return]</pre>
+
+  <h3>Step 3 — Create the config file</h3>
+  <p>Create <code>configs/model/resnet.yaml</code>:</p>
+<pre>name: resnet
+generator:
+  in_channels: 1
+  out_channels: 3
+  base_features: 64
+  n_blocks: 9
+
+discriminator:
+  base_features: 64
+  n_scales: 3
+  spectral_norm: true</pre>
+
+  <h3>Step 4 — Export from __init__.py</h3>
+<pre># src/gan_pipeline/models/__init__.py
+from .resnet import ResNetGenerator</pre>
+
+  <h3>Step 5 — Wire into the training script</h3>
+  <p>In <code>scripts/train_pix2pix.py</code>, add a branch for the new model:</p>
+<pre>if cfg.model.name == "unet":
+    generator = UNetGenerator(...)
+elif cfg.model.name == "resnet":           # ← add this
+    generator = ResNetGenerator(
+        in_channels=cfg.data.sar_channels,
+        out_channels=cfg.data.eo_channels,
+        base_features=cfg.model.generator.base_features,
+        n_blocks=cfg.model.generator.n_blocks,
+    )</pre>
+
+  <h3>Step 6 — Write tests</h3>
+<pre># tests/test_pix2pix.py
+def test_resnet_generator_output_shape():
+    gen = ResNetGenerator(in_channels=1, out_channels=3, base_features=64, n_blocks=6)
+    x = torch.randn(1, 1, 256, 256)
+    out = gen(x)
+    assert out.shape == (1, 3, 256, 256)
+    assert out.min() >= -1.0 and out.max() <= 1.0   # Tanh output in [-1, 1]
+
+def test_resnet_generator_gradients():
+    gen = ResNetGenerator(in_channels=1, out_channels=3)
+    x = torch.randn(1, 1, 256, 256, requires_grad=True)
+    out = gen(x)
+    out.mean().backward()
+    assert x.grad is not None   # gradients flow all the way back to input</pre>
+
+  <h3>Step 7 — Run /smoke-test</h3>
+<pre>python scripts/train_pix2pix.py model=resnet training.epochs=2 training.num_workers=0</pre>
+
+  <h2>18.3 Adding spectral normalisation to any model</h2>
+<pre>import torch.nn as nn
+
+def apply_spectral_norm(module: nn.Module) -> nn.Module:
+    """Apply spectral norm to all Conv2d layers in a module."""
+    for m in module.modules():
+        if isinstance(m, nn.Conv2d):
+            nn.utils.spectral_norm(m)
+    return module
+
+# After building the model:
+discriminator = apply_spectral_norm(discriminator)</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH19 -->
+<div class="chapter" id="ch19">
+  <div class="chapter-header">
+    <div class="chapter-num">19</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Nineteen</div>
+      <h1>How to Build a Custom Loss Function</h1>
+    </div>
+  </div>
+
+  <p>This chapter explains how to implement a new loss function and integrate it with the existing loss infrastructure.</p>
+
+  <h2>19.1 How the existing loss system is structured</h2>
+  <p>The file <code>models/losses.py</code> uses a <code>LossType</code> enum to select between loss functions:</p>
+<pre>from enum import Enum
+
+class LossType(str, Enum):
+    HINGE = "hinge"
+    BCE   = "bce"
+    WGAN  = "wasserstein"
+
+def discriminator_loss(
+    real_logits: torch.Tensor,
+    fake_logits: torch.Tensor,
+    loss_type: LossType,
+) -> torch.Tensor:
+    if loss_type == LossType.HINGE:
+        return (
+            F.relu(1.0 - real_logits).mean()
+            + F.relu(1.0 + fake_logits).mean()
+        )
+    elif loss_type == LossType.BCE:
+        ...
+    elif loss_type == LossType.WGAN:
+        ...</pre>
+
+  <h2>19.2 Adding a new adversarial loss — Relativistic Hinge</h2>
+  <p>The Relativistic GAN loss asks "how much more real is the real image than the fake?" rather than just "is this real or fake?"</p>
+
+  <h3>Step 1 — Add to the enum</h3>
+<pre>class LossType(str, Enum):
+    HINGE      = "hinge"
+    BCE        = "bce"
+    WGAN       = "wasserstein"
+    REL_HINGE  = "relativistic_hinge"   # ← add this</pre>
+
+  <h3>Step 2 — Implement the loss functions</h3>
+<pre>def discriminator_loss(real_logits, fake_logits, loss_type):
+    ...
+    elif loss_type == LossType.REL_HINGE:
+        # D wants: real - fake > 1  and  fake - real < -1
+        real_relative = real_logits - fake_logits.mean()
+        fake_relative = fake_logits - real_logits.mean()
+        return (
+            F.relu(1.0 - real_relative).mean()
+            + F.relu(1.0 + fake_relative).mean()
+        )
+
+def generator_loss(fake_logits, loss_type, real_logits=None):
+    ...
+    elif loss_type == LossType.REL_HINGE:
+        # G wants: fake - real > 1
+        if real_logits is None:
+            raise ValueError("Relativistic hinge needs real_logits in G step")
+        fake_relative = fake_logits - real_logits.mean()
+        real_relative = real_logits - fake_logits.mean()
+        return (
+            F.relu(1.0 - fake_relative).mean()
+            + F.relu(1.0 + real_relative).mean()
+        )</pre>
+
+  <h3>Step 3 — Update the trainer to pass real_logits when needed</h3>
+<pre># In pix2pix_trainer.py, generator step:
+if self.loss_type == LossType.REL_HINGE:
+    # Need real logits for relativistic loss — extra forward pass
+    with torch.no_grad():
+        real_logits = self.discriminator(cat([sar, real_eo]))
+    g_adv = multiscale_generator_loss(
+        fake_maps, self.loss_type, real_maps_list=real_logits
+    )
+else:
+    g_adv = multiscale_generator_loss(fake_maps, self.loss_type)</pre>
+
+  <h3>Step 4 — Add to the config and test</h3>
+<pre># Use it:
+python scripts/train_pix2pix.py training.loss_type=relativistic_hinge
+
+# Test it:
+def test_relativistic_hinge_loss():
+    real = torch.randn(2, 1, 30, 30)
+    fake = torch.randn(2, 1, 30, 30)
+    d_loss = discriminator_loss(real, fake, LossType.REL_HINGE)
+    assert d_loss.shape == ()        # scalar
+    assert torch.isfinite(d_loss)    # no NaN or Inf</pre>
+
+  <h2>19.3 Building a new perceptual loss (LPIPS)</h2>
+  <p>LPIPS (Learned Perceptual Image Patch Similarity) is a perceptual metric that often correlates better with human perception than VGG loss. Here is how to add it:</p>
+<pre>import torch
+import torch.nn as nn
+
+class LPIPSLoss(nn.Module):
+
+    def __init__(self) -> None:
+        super().__init__()
+        # pip install lpips
+        import lpips
+        self.lpips = lpips.LPIPS(net="alex")
+        for p in self.parameters():
+            p.requires_grad_(False)   # freeze — feature extractor only
+
+    def forward(
+        self,
+        fake: torch.Tensor,    # (B, 3, H, W), range [-1, 1]
+        real: torch.Tensor,
+    ) -> torch.Tensor:
+        # lpips expects [-1, 1] input — matches our normalisation
+        return self.lpips(fake, real).mean()  # type: ignore[no-any-return]</pre>
+
+  <p>Add <code>lambda_lpips</code> to <code>configs/training/pix2pix.yaml</code> and integrate in the trainer the same way VGG loss is integrated.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH20 -->
+<div class="chapter" id="ch20">
+  <div class="chapter-header">
+    <div class="chapter-num">20</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Twenty</div>
+      <h1>How to Build a New Training Workflow</h1>
+    </div>
+  </div>
+
+  <p>This chapter explains how the training infrastructure is wired together and how to build an entirely new training workflow from scratch — for example, a CycleGAN unpaired training loop.</p>
+
+  <h2>20.1 How a trainer is structured</h2>
+  <p>Every trainer follows the same skeleton:</p>
+<pre>class MyTrainer:
+    def __init__(self, cfg: DictConfig, device: torch.device) -> None:
+        # 1. Build models from config
+        self.generator = build_generator(cfg)
+        self.discriminator = build_discriminator(cfg)
+
+        # 2. Move to device
+        self.generator.to(device)
+        self.discriminator.to(device)
+
+        # 3. Build optimisers
+        self.opt_g = torch.optim.Adam(
+            self.generator.parameters(),
+            lr=cfg.training.lr_generator,
+            betas=(cfg.training.beta1, cfg.training.beta2),
+        )
+        self.opt_d = torch.optim.Adam(
+            self.discriminator.parameters(),
+            lr=cfg.training.lr_discriminator,
+            betas=(cfg.training.beta1, cfg.training.beta2),
+        )
+
+        # 4. Set up output directories
+        self.output_dir = Path(cfg.output_dir)
+        (self.output_dir / "checkpoints").mkdir(parents=True, exist_ok=True)
+        (self.output_dir / "samples").mkdir(parents=True, exist_ok=True)
+
+    def _discriminator_step(self, batch):
+        """Update D for one batch. Returns d_loss."""
+        ...
+
+    def _generator_step(self, batch):
+        """Update G for one batch. Returns losses dict."""
+        ...
+
+    def train(self, dataloader) -> None:
+        mlflow.set_tracking_uri("sqlite:///mlflow.db")
+        mlflow.set_experiment(self.cfg.experiment_name)
+
+        with mlflow.start_run():
+            mlflow.log_params({...})
+            for epoch in range(self.cfg.training.epochs):
+                for batch in dataloader:
+                    d_loss = self._discriminator_step(batch)
+                    g_losses = self._generator_step(batch)
+                mlflow.log_metrics({...}, step=epoch)
+                if epoch % self.cfg.training.save_every == 0:
+                    self._save_checkpoint(epoch, {...})</pre>
+
+  <h2>20.2 Building a CycleGAN trainer (unpaired)</h2>
+  <p>CycleGAN trains on <em>unpaired</em> images — you don't need matching SAR/EO pairs, just a set of SAR images and a set of EO images. It trains two generators: G_AB (SAR→EO) and G_BA (EO→SAR), enforcing a cycle consistency: G_BA(G_AB(sar)) ≈ sar.</p>
+
+  <h3>Step 1 — Create the trainer file</h3>
+<pre># src/gan_pipeline/training/cyclegan_trainer.py
+
+class CycleGANTrainer:
+
+    def __init__(self, cfg: DictConfig, device: torch.device) -> None:
+        # Two generators, two discriminators
+        self.G_AB = ResNetGenerator(...).to(device)  # SAR → EO
+        self.G_BA = ResNetGenerator(...).to(device)  # EO → SAR
+        self.D_A  = PatchGANDiscriminator(...).to(device)  # scores SAR
+        self.D_B  = PatchGANDiscriminator(...).to(device)  # scores EO
+
+        self.lambda_cycle = cfg.training.lambda_cycle   # e.g. 10.0
+        self.lambda_idt   = cfg.training.lambda_identity  # e.g. 5.0
+
+        # One optimiser per network pair
+        self.opt_G = torch.optim.Adam(
+            list(self.G_AB.parameters()) + list(self.G_BA.parameters()),
+            lr=cfg.training.lr_generator,
+            betas=(cfg.training.beta1, 0.999),
+        )
+        self.opt_D = torch.optim.Adam(
+            list(self.D_A.parameters()) + list(self.D_B.parameters()),
+            lr=cfg.training.lr_discriminator,
+            betas=(cfg.training.beta1, 0.999),
+        )
+
+    def _generator_step(self, real_sar, real_eo):
+        # Forward cycle: SAR → fake EO → reconstructed SAR
+        fake_eo  = self.G_AB(real_sar)
+        rec_sar  = self.G_BA(fake_eo)
+
+        # Backward cycle: EO → fake SAR → reconstructed EO
+        fake_sar = self.G_BA(real_eo)
+        rec_eo   = self.G_AB(fake_sar)
+
+        # Adversarial: G_AB should fool D_B, G_BA should fool D_A
+        loss_adv = (
+            generator_loss(self.D_B(fake_eo),  LossType.HINGE)
+            + generator_loss(self.D_A(fake_sar), LossType.HINGE)
+        )
+
+        # Cycle consistency: reconstructed images should match originals
+        loss_cycle = (
+            F.l1_loss(rec_sar, real_sar)
+            + F.l1_loss(rec_eo, real_eo)
+        ) * self.lambda_cycle
+
+        # Identity: G_AB(real_eo) should ≈ real_eo (colour preservation)
+        loss_idt = (
+            F.l1_loss(self.G_AB(real_eo), real_eo)
+            + F.l1_loss(self.G_BA(real_sar), real_sar)
+        ) * self.lambda_idt
+
+        loss_G = loss_adv + loss_cycle + loss_idt
+        self.opt_G.zero_grad()
+        loss_G.backward()
+        self.opt_G.step()
+        return loss_G.item()</pre>
+
+  <h3>Step 2 — Create config files</h3>
+<pre># configs/model/cyclegan.yaml
+name: cyclegan
+generator:
+  base_features: 64
+  n_blocks: 9
+discriminator:
+  base_features: 64
+
+# configs/training/cyclegan.yaml
+epochs: 200
+lr_generator: 0.0002
+lr_discriminator: 0.0002
+beta1: 0.5
+lambda_cycle: 10.0
+lambda_identity: 5.0</pre>
+
+  <h3>Step 3 — Create the entry point script</h3>
+<pre># scripts/train_cyclegan.py
+import hydra
+from omegaconf import DictConfig
+import torch
+from gan_pipeline.training.cyclegan_trainer import CycleGANTrainer
+from gan_pipeline.data.paired_dataset import get_paired_dataloader
+
+@hydra.main(config_path="../configs", config_name="config", version_base=None)
+def main(cfg: DictConfig) -> None:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    trainer = CycleGANTrainer(cfg, device)
+    dataloader = get_paired_dataloader(cfg, split="train")
+    trainer.train(dataloader)
+
+if __name__ == "__main__":
+    main()</pre>
+
+  <h3>Step 4 — Add a Makefile target</h3>
+<pre>train-cyclegan:
+	python scripts/train_cyclegan.py model=cyclegan training=cyclegan data=sar_eo</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH21 -->
+<div class="chapter" id="ch21">
+  <div class="chapter-header">
+    <div class="chapter-num">21</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Twenty-One</div>
+      <h1>How the CI/CD and Pre-commit Were Built</h1>
+    </div>
+  </div>
+
+  <p>This chapter explains how to set up CI/CD and pre-commit from scratch so you understand every decision made in this project's configuration.</p>
+
+  <h2>21.1 Setting up pre-commit from scratch</h2>
+
+  <h3>Step 1 — Install pre-commit</h3>
+<pre>pip install pre-commit</pre>
+
+  <h3>Step 2 — Create .pre-commit-config.yaml</h3>
+  <p>This file defines which hooks to run and how. The project uses <code>language: system</code> hooks — they use whatever tools are already installed in your active Python environment rather than downloading separate virtualenvs.</p>
+<pre>repos:
+  - repo: local           # run locally installed tools
+    hooks:
+
+      - id: ruff
+        name: ruff lint
+        entry: ruff check  # the command to run
+        language: system   # use the system/venv installation
+        args: [src, tests, scripts]
+        pass_filenames: false  # pass directories, not individual files
+        always_run: true       # run even if no Python files changed
+
+      - id: black
+        name: black format check
+        entry: black --check   # --check = report errors, don't modify files
+        language: system
+        args: [src, tests, scripts]
+        pass_filenames: false
+        always_run: true
+
+      - id: isort
+        name: isort import check
+        entry: isort --check-only
+        language: system
+        args: [src, tests, scripts]
+        pass_filenames: false
+        always_run: true
+
+      - id: mypy
+        name: mypy type check
+        entry: mypy
+        language: system
+        args: [src]
+        pass_filenames: false
+        always_run: true
+
+      - id: pytest
+        name: pytest
+        entry: pytest
+        language: system
+        args: [--no-header, -q]
+        pass_filenames: false
+        always_run: true</pre>
+
+  <h3>Step 3 — Register the hooks</h3>
+<pre>pre-commit install
+# Output: pre-commit installed at .git/hooks/pre-commit</pre>
+
+  <p>This creates a shell script at <code>.git/hooks/pre-commit</code> that git calls before every commit.</p>
+
+  <h3>Step 4 — Configure tool settings in pyproject.toml</h3>
+  <p>All tool settings are centralised so they agree on line length, Python version, etc.:</p>
+<pre>[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"    # makes isort's style match black's grouping
+line_length = 100
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]  # which rule categories to enforce
+ignore = ["N812"]   # specific rule to suppress (lowercase imported as non-lowercase)
+
+[tool.mypy]
+python_version = "3.10"
+strict = true              # enables all strict checks
+ignore_missing_imports = true   # don't error on untyped third-party libs</pre>
+
+  <h2>21.2 Building GitHub Actions CI from scratch</h2>
+
+  <h3>Step 1 — Create the workflows directory</h3>
+<pre>mkdir -p .github/workflows</pre>
+
+  <h3>Step 2 — Write pre-commit.yml</h3>
+<pre># .github/workflows/pre-commit.yml
+name: pre-commit          # shown in GitHub UI
+
+on:                       # when to trigger
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest   # run on a fresh Ubuntu VM
+
+    steps:
+      # 1. Check out the code
+      - uses: actions/checkout@v4
+
+      # 2. Set up Python — cache pip downloads for speed
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      # 3. Install all dependencies (same as local setup)
+      - name: Install dev dependencies
+        run: pip install -e ".[dev]"
+
+      # 4. Run all hooks against all files
+      - name: Run pre-commit hooks
+        run: pre-commit run --all-files</pre>
+
+  <h3>Step 3 — Write pytest.yml</h3>
+<pre># .github/workflows/pytest.yml
+name: pytest
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: pytest</pre>
+
+  <h3>Step 4 — Add status badges to README</h3>
+  <p>GitHub generates badge URLs automatically for each workflow:</p>
+<pre>[![pre-commit](https://github.com/&lt;user&gt;/&lt;repo&gt;/actions/workflows/pre-commit.yml/badge.svg)]
+(https://github.com/&lt;user&gt;/&lt;repo&gt;/actions/workflows/pre-commit.yml)</pre>
+
+  <h2>21.3 How MLflow was integrated into the trainers</h2>
+  <p>MLflow integration requires only three additions to a training script:</p>
+<pre>import mlflow
+
+# 1. Set where to store the data (SQLite file in project root)
+mlflow.set_tracking_uri("sqlite:///mlflow.db")
+
+# 2. Set the experiment name (creates it if it doesn't exist)
+mlflow.set_experiment("my_experiment")
+
+# 3. Wrap the training loop in a run context
+with mlflow.start_run():
+
+    # Log hyperparameters once at the start
+    mlflow.log_params({
+        "loss_type": "hinge",
+        "lambda_l1": 100.0,
+        "epochs": 200,
+    })
+
+    for epoch in range(200):
+        # ... training ...
+
+        # Log metrics every epoch
+        mlflow.log_metrics({
+            "d_loss": d_loss,
+            "g_adv": g_adv,
+            "g_l1": g_l1,
+        }, step=epoch)</pre>
+
+  <h2>21.4 Packaging — how pyproject.toml works</h2>
+  <p>The file <code>pyproject.toml</code> is the single source of truth for the package. It replaces the older <code>setup.py</code>:</p>
+<pre>[project]
+name = "gan-pipeline"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+# Core runtime dependencies
+dependencies = [
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+    "hydra-core>=1.3.2",
+    "mlflow>=2.9.0",
+    "loguru>=0.7.2",
+    "numpy>=1.24.0",
+    "pillow>=10.0.0",
+]
+
+# Optional extras — installed with pip install -e ".[dev]" etc.
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "black>=23.9.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "isort>=5.12.0",
+    "pre-commit>=3.5.0",
+]
+geo  = ["rasterio>=1.3.0", "h5py>=3.9.0"]
+eval = ["torch-fidelity>=0.3.0"]
+
+# Tell pip where to find the package source
+[tool.setuptools.packages.find]
+where = ["src"]</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH22 -->
+<div class="chapter" id="ch22">
+  <div class="chapter-header">
+    <div class="chapter-num">22</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Twenty-Two</div>
+      <h1>Component Integration Map — How Everything Connects</h1>
+    </div>
+  </div>
+
+  <p>This chapter shows exactly how all the pieces wire together, from the first call to the last.</p>
+
+  <h2>22.1 Call chain — from CLI to pixel output</h2>
+<div class="diagram">$ python scripts/train_pix2pix.py training.loss_type=hinge
+         │
+         ▼
+@hydra.main(...)           ← Hydra parses CLI, loads + merges YAML configs
+main(cfg: DictConfig)      ← receives one config object
+         │
+         ├─→ torch.device("cuda" or "cpu")
+         │
+         ├─→ UNetGenerator(cfg.model.generator)    ← built from config, moved to device
+         ├─→ MultiScaleDiscriminator(cfg.model.discriminator)
+         │
+         ├─→ get_paired_dataloader(cfg, "train")
+         │       └─→ SideBySidePairedDataset(root, split, image_size, ...)
+         │               └─→ DataLoader(dataset, batch_size, shuffle, num_workers)
+         │
+         └─→ Pix2PixTrainer(cfg, device, generator, discriminator)
+                  │
+                  └─→ trainer.train(dataloader)
+                           │
+                           ├─→ mlflow.set_experiment(...)
+                           │
+                           └─→ for epoch in range(epochs):
+                                    for batch in dataloader:   ← {"sar":..., "eo":...}
+                                         │
+                                         ├─→ _discriminator_step(batch)
+                                         │       ├─→ generator(sar).detach() → fake_eo
+                                         │       ├─→ discriminator(cat[sar, real_eo]) → real_maps
+                                         │       ├─→ discriminator(cat[sar, fake_eo]) → fake_maps
+                                         │       ├─→ multiscale_discriminator_loss(...)
+                                         │       ├─→ d_loss.backward()
+                                         │       └─→ opt_d.step()
+                                         │
+                                         └─→ _generator_step(batch)
+                                                 ├─→ generator(sar) → fake_eo
+                                                 ├─→ discriminator(cat[sar, fake_eo]) → fake_maps
+                                                 ├─→ multiscale_generator_loss(...)   g_adv
+                                                 ├─→ F.l1_loss(fake_eo, real_eo)     g_l1
+                                                 ├─→ VGGPerceptualLoss(fake_eo, eo)  g_vgg
+                                                 ├─→ feature_matching_loss(...)       g_fm
+                                                 ├─→ L_total = g_adv + λ1*g_l1 + λv*g_vgg + λf*g_fm
+                                                 ├─→ L_total.backward()
+                                                 └─→ opt_g.step()
+                                    │
+                                    ├─→ mlflow.log_metrics(epoch)
+                                    ├─→ save_checkpoint(epoch)      → outputs/.../checkpoints/
+                                    └─→ save_image(sample_grid)     → outputs/.../samples/</div>
+
+  <h2>22.2 Data flow — tensor shapes at each stage</h2>
+<div class="diagram">PNG file (512×256 pixels, uint8 RGB)
+         │  SideBySidePairedDataset.__getitem__
+         ▼
+Split at midpoint:
+  SAR PIL Image  (256×256)     EO PIL Image  (256×256)
+         │                              │
+         │  Augmentation (same params)  │
+         │  Resize → 286×286           │
+         │  RandomCrop → 256×256       │
+         │  RandomHFlip               │
+         ▼                              ▼
+  SAR Tensor  (1, 256, 256)    EO Tensor  (3, 256, 256)
+  values in [-1, 1]             values in [-1, 1]
+         │                              │
+         └─────────── DataLoader ───────┘
+                           │  batch_size=1
+                           ▼
+  batch["sar"]  (1, 1, 256, 256)
+  batch["eo"]   (1, 3, 256, 256)
+         │
+         ▼  UNetGenerator
+  fake_eo  (1, 3, 256, 256)   values in [-1, 1]   ← Tanh activation
+         │
+         ▼  cat([sar, fake_eo])
+  disc_input  (1, 4, 256, 256)   ← 1 SAR channel + 3 EO channels
+         │
+         ▼  PatchGANDiscriminator (×3 scales)
+  D₀ output  (1, 1, 30, 30)     ← 900 patch logits at full res
+  D₁ output  (1, 1, 14, 14)     ← 196 patch logits at half res
+  D₂ output  (1, 1,  6,  6)     ← 36 patch logits at quarter res
+         │
+         ▼  multiscale_generator_loss(...)
+  g_adv   scalar   ← averaged across all 3 scales</div>
+
+  <h2>22.3 Configuration dependency map</h2>
+<div class="diagram">configs/config.yaml
+    │
+    ├─→ model: pix2pix      configs/model/pix2pix.yaml
+    │                            └─→ generator.base_features → UNetGenerator.__init__
+    │                            └─→ discriminator.n_scales  → MultiScaleDiscriminator.__init__
+    │                            └─→ discriminator.spectral_norm → PatchGANDiscriminator.__init__
+    │
+    ├─→ training: pix2pix   configs/training/pix2pix.yaml
+    │                            └─→ lr_generator     → Adam(generator.parameters(), lr=...)
+    │                            └─→ loss_type        → LossType enum → loss functions
+    │                            └─→ lambda_l1        → g_loss += lambda_l1 * F.l1_loss(...)
+    │                            └─→ lambda_vgg       → VGGPerceptualLoss instantiated if > 0
+    │                            └─→ vgg_weights_path → VGGPerceptualLoss(weights_path=...)
+    │                            └─→ epochs           → for epoch in range(epochs)
+    │
+    └─→ data: sar_eo        configs/data/sar_eo.yaml
+                                 └─→ root            → SideBySidePairedDataset(root=...)
+                                 └─→ image_size      → transforms resize/crop target
+                                 └─→ sar_channels    → UNetGenerator(in_channels=...)
+                                 └─→ dataset_format  → get_paired_dataloader() branch</div>
+
+  <h2>22.4 Where each output file comes from</h2>
+
+  <table>
+    <tr><th>File / Directory</th><th>Created by</th><th>When</th></tr>
+    <tr><td><code>outputs/&lt;name&gt;/checkpoints/epoch_NNNN.pt</code></td><td><code>utils/checkpointing.py save_checkpoint()</code></td><td>Every <code>save_every</code> epochs</td></tr>
+    <tr><td><code>outputs/&lt;name&gt;/samples/epoch_NNNN.png</code></td><td><code>pix2pix_trainer.py _save_samples()</code></td><td>Every <code>sample_every</code> epochs</td></tr>
+    <tr><td><code>outputs/&lt;name&gt;/train.log</code></td><td>Loguru logger in <code>utils/logging.py</code></td><td>Continuous during training</td></tr>
+    <tr><td><code>outputs/&lt;name&gt;/.hydra/config.yaml</code></td><td>Hydra automatically</td><td>Once at training start</td></tr>
+    <tr><td><code>mlflow.db</code></td><td>MLflow SQLite backend</td><td>Created on first training run, appended to thereafter</td></tr>
+    <tr><td><code>data/sar_eo/train/*.png</code></td><td><code>scripts/prepare_data.py</code></td><td>One-time data preparation step</td></tr>
+    <tr><td><code>weights/vgg16-397923af.pth</code></td><td><code>scripts/download_vgg_weights.py</code></td><td>One-time download</td></tr>
+  </table>
+
+  <div class="box box-tip">
+    <strong>You now have the complete picture</strong>
+    Every component, every connection, every file — you know what it is, why it exists, and how to build it from scratch. Use this knowledge to extend the pipeline confidently: add new models, new losses, new data formats, or entirely new training workflows.
+  </div>
+
+  <div class="footer-note">
+    SAR→EO GAN Pipeline — Complete Developer Guide · June 2026 · github.com/baudhya/gan-pipeline
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH23 -->
+<div class="chapter" id="ch23">
+  <div class="chapter-header">
+    <div class="chapter-num">23</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Twenty-Three</div>
+      <h1>Managing pyproject.toml from the Command Line</h1>
+    </div>
+  </div>
+
+  <div class="box box-info">
+    <strong>The Problem</strong>
+    Writing and editing <code>pyproject.toml</code> by hand is error-prone — wrong indentation, wrong version specifiers, forgetting to add a package to the right extras group. Modern package managers let you manage the entire file from the command line, the same way <code>npm install</code> manages <code>package.json</code> automatically.
+  </div>
+
+  <p>This chapter covers three tools: <strong>uv</strong> (fastest, recommended), <strong>Poetry</strong> (most popular), and <strong>pip-tools</strong> (lightweight). Pick one — they all manage <code>pyproject.toml</code> so you never have to edit it by hand for dependency changes.</p>
+
+  <h2>23.1 uv — the recommended tool</h2>
+
+  <p><code>uv</code> is a Rust-based Python package manager from Astral. It is 10–100× faster than pip, manages virtual environments automatically, and can initialise and manage <code>pyproject.toml</code> entirely from the CLI.</p>
+
+  <h3>Install uv</h3>
+<pre># Linux / macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or via pip
+pip install uv</pre>
+
+  <h3>Initialise a new project from scratch</h3>
+<pre>uv init gan-pipeline
+cd gan-pipeline</pre>
+  <p>This creates:</p>
+<pre>gan-pipeline/
+├── pyproject.toml      ← auto-generated with sane defaults
+├── README.md
+├── .python-version     ← pins the Python version (e.g. 3.10)
+└── src/
+    └── gan_pipeline/
+        └── __init__.py</pre>
+
+  <p>The generated <code>pyproject.toml</code> looks like:</p>
+<pre>[project]
+name = "gan-pipeline"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = []        ← uv manages this list</pre>
+
+  <h3>Add core dependencies</h3>
+<pre># Add one package — uv resolves, installs, AND writes it to pyproject.toml
+uv add torch torchvision
+uv add hydra-core omegaconf mlflow loguru numpy pillow scipy tqdm</pre>
+  <p>Each <code>uv add</code> command:</p>
+  <ul>
+    <li>Resolves the latest compatible version</li>
+    <li>Installs it into the virtual environment</li>
+    <li>Writes it to the <code>dependencies</code> list in <code>pyproject.toml</code></li>
+    <li>Updates <code>uv.lock</code> (like <code>package-lock.json</code> — pins exact versions)</li>
+  </ul>
+
+  <h3>Add dev dependencies (extras group)</h3>
+<pre># These go into [project.optional-dependencies] dev = [...]
+uv add --dev pytest pytest-cov black ruff isort mypy types-Pillow pre-commit</pre>
+
+  <h3>Add optional extras groups</h3>
+<pre># Creates [project.optional-dependencies] geo = [...]
+uv add --optional geo rasterio h5py
+
+# Creates [project.optional-dependencies] eval = [...]
+uv add --optional eval torch-fidelity</pre>
+
+  <h3>Remove a dependency</h3>
+<pre>uv remove scipy               # removes from dependencies + uninstalls
+uv remove --dev pytest-cov    # removes from dev group</pre>
+
+  <h3>Upgrade a dependency</h3>
+<pre>uv add torch --upgrade          # upgrade to latest compatible version
+uv lock --upgrade               # upgrade everything in uv.lock</pre>
+
+  <h3>Install from existing pyproject.toml (on a new machine)</h3>
+<pre>uv sync             # installs all dependencies including dev
+uv sync --no-dev    # core only (for production)
+uv sync --extra geo # core + geo extras</pre>
+
+  <h3>Run commands inside the managed environment</h3>
+<pre>uv run pytest                      # run pytest without activating manually
+uv run python scripts/train_pix2pix.py
+uv run make lint</pre>
+
+  <div class="box box-tip">
+    <strong>uv replaces both pip and venv</strong>
+    You do not need <code>python -m venv .venv</code> or <code>pip install</code> when using uv. It manages the virtual environment automatically. The Makefile's <code>make venv</code> and <code>make install</code> targets can be replaced by <code>uv sync</code>.
+  </div>
+
+  <h3>Complete uv workflow for this project from scratch</h3>
+<pre># 1. Install uv once
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 2. Initialise project
+uv init gan-pipeline && cd gan-pipeline
+
+# 3. Add all dependencies
+uv add torch torchvision hydra-core omegaconf mlflow loguru numpy pillow scipy tqdm
+uv add --dev pytest pytest-cov black ruff isort mypy types-Pillow pre-commit
+uv add --optional geo rasterio h5py
+uv add --optional eval torch-fidelity
+
+# 4. Install and activate
+uv sync --extra geo --extra eval
+source .venv/bin/activate
+
+# 5. Install pre-commit hooks
+pre-commit install
+
+# Done — pyproject.toml was written entirely by uv commands</pre>
+
+  <h2>23.2 Poetry — the most widely used tool</h2>
+
+  <p>Poetry has been the industry standard for Python project management since 2018. It manages <code>pyproject.toml</code>, virtual environments, and publishing.</p>
+
+  <h3>Install Poetry</h3>
+<pre>curl -sSL https://install.python-poetry.org | python3 -</pre>
+
+  <h3>Initialise a new project</h3>
+<pre>poetry new gan-pipeline      # creates full structure
+# or, inside an existing directory:
+poetry init                  # interactive wizard that builds pyproject.toml</pre>
+
+  <p>The <code>poetry init</code> wizard asks you:</p>
+<pre>Package name [gan-pipeline]:
+Version [0.1.0]:
+Description []: Production-grade SAR→EO GAN pipeline
+Compatible Python versions [^3.10]: >=3.10
+Would you like to define your main dependencies? yes
+  → torch, torchvision, hydra-core, ...
+Would you like to define your dev dependencies? yes
+  → pytest, black, ruff, ...</pre>
+
+  <h3>Add dependencies</h3>
+<pre># Core dependency
+poetry add torch torchvision hydra-core omegaconf mlflow loguru
+
+# Dev dependency (added to [tool.poetry.dev-dependencies])
+poetry add --group dev pytest black ruff isort mypy pre-commit
+
+# Optional extras group
+poetry add --optional rasterio h5py    # for geo extra</pre>
+
+  <h3>Remove a dependency</h3>
+<pre>poetry remove scipy
+poetry remove --group dev pytest-cov</pre>
+
+  <h3>Upgrade dependencies</h3>
+<pre>poetry update          # upgrade all to latest compatible
+poetry update torch    # upgrade one package</pre>
+
+  <h3>Install on a new machine</h3>
+<pre>poetry install            # installs everything + dev
+poetry install --no-dev   # core only</pre>
+
+  <h3>Run commands</h3>
+<pre>poetry run pytest
+poetry run python scripts/train_pix2pix.py
+poetry shell              # activate the managed venv in a subshell</pre>
+
+  <div class="box box-warn">
+    <strong>Poetry vs pyproject.toml standard</strong>
+    Poetry uses its own <code>[tool.poetry]</code> section in pyproject.toml in addition to the standard <code>[project]</code> section. This means a Poetry-managed <code>pyproject.toml</code> is slightly different from one managed by uv or setuptools. If you use Poetry, stick with it consistently across the project.
+  </div>
+
+  <h2>23.3 pip-tools — lightweight pinning without a full package manager</h2>
+
+  <p>If you want to keep plain pip but get reproducible builds with pinned versions, <code>pip-tools</code> is the answer. It compiles <code>pyproject.toml</code> into a locked <code>requirements.txt</code>.</p>
+
+  <h3>Install pip-tools</h3>
+<pre>pip install pip-tools</pre>
+
+  <h3>Compile requirements from pyproject.toml</h3>
+<pre># Generates requirements.txt with pinned versions from [project].dependencies
+pip-compile pyproject.toml -o requirements.txt
+
+# Generates dev-requirements.txt from [project.optional-dependencies].dev
+pip-compile pyproject.toml --extra dev -o requirements-dev.txt</pre>
+
+  <h3>Install pinned requirements</h3>
+<pre>pip-sync requirements-dev.txt   # installs exactly what's in the lock file</pre>
+
+  <h3>Upgrade a pinned package</h3>
+<pre>pip-compile --upgrade-package torch pyproject.toml -o requirements.txt</pre>
+
+  <div class="box box-info">
+    <strong>When to use pip-tools</strong>
+    Use pip-tools when you want to keep pip as your installer but need reproducible builds (same exact versions on every machine). It is lighter than Poetry or uv but does not manage virtual environments — you still create and activate the venv manually.
+  </div>
+
+  <h2>23.4 Comparison table</h2>
+
+  <table>
+    <tr>
+      <th>Feature</th>
+      <th>uv</th>
+      <th>Poetry</th>
+      <th>pip-tools + pip</th>
+    </tr>
+    <tr>
+      <td>Speed</td>
+      <td>★★★★★ (Rust, very fast)</td>
+      <td>★★★ (Python, moderate)</td>
+      <td>★★★ (depends on pip)</td>
+    </tr>
+    <tr>
+      <td>Manages venv automatically</td>
+      <td>Yes</td>
+      <td>Yes</td>
+      <td>No — manual</td>
+    </tr>
+    <tr>
+      <td>Writes pyproject.toml via CLI</td>
+      <td>Yes — <code>uv add</code></td>
+      <td>Yes — <code>poetry add</code></td>
+      <td>No — edit by hand, then compile</td>
+    </tr>
+    <tr>
+      <td>Lock file</td>
+      <td><code>uv.lock</code></td>
+      <td><code>poetry.lock</code></td>
+      <td><code>requirements.txt</code></td>
+    </tr>
+    <tr>
+      <td>Compatible with standard pip</td>
+      <td>Yes</td>
+      <td>Mostly</td>
+      <td>Yes</td>
+    </tr>
+    <tr>
+      <td>Extras groups (<code>[dev]</code>, <code>[geo]</code>)</td>
+      <td>Yes — <code>uv add --optional</code></td>
+      <td>Yes — <code>poetry add --group</code></td>
+      <td>Yes — <code>pip-compile --extra</code></td>
+    </tr>
+    <tr>
+      <td>Learning curve</td>
+      <td>Low</td>
+      <td>Medium</td>
+      <td>Low</td>
+    </tr>
+    <tr>
+      <td>Best for</td>
+      <td>New projects, speed priority</td>
+      <td>Teams familiar with Poetry ecosystem</td>
+      <td>Projects already using pip</td>
+    </tr>
+  </table>
+
+  <h2>23.5 Applying this to the existing project</h2>
+
+  <p>The gan-pipeline project currently uses plain <code>pip install -e ".[dev]"</code>. To switch to uv without changing anything else:</p>
+
+<pre># Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone the repo (pyproject.toml already exists)
+git clone https://github.com/baudhya/gan-pipeline.git
+cd gan-pipeline
+
+# uv reads the existing pyproject.toml and installs everything
+uv sync --extra geo --extra eval
+
+# Activate
+source .venv/bin/activate
+
+# Install pre-commit hooks
+pre-commit install
+
+# Download VGG weights
+make download-weights</pre>
+
+  <p>From this point, use <code>uv add &lt;package&gt;</code> to add new dependencies instead of editing <code>pyproject.toml</code> by hand. The file is updated automatically.</p>
+
+  <h3>Adding a new dependency to this project (uv workflow)</h3>
+<pre># Adding albumentations for advanced augmentation
+uv add albumentations
+
+# Adding it to geo extras instead of core
+uv add --optional geo albumentations
+
+# The pyproject.toml geo section now automatically includes albumentations:
+# geo = ["rasterio>=1.3.0", "h5py>=3.9.0", "albumentations>=1.3.0"]</pre>
+
+  <div class="box box-tip">
+    <strong>Recommendation for this project</strong>
+    Use <strong>uv</strong> for all new dependency management. It is the fastest tool available, reads the existing <code>pyproject.toml</code> without any changes, and replaces both <code>python -m venv</code> and <code>pip install</code> with a single <code>uv sync</code> command. The rest of the project (Makefile, CI, pre-commit) works unchanged.
+  </div>
+
+  <div class="footer-note">
+    SAR→EO GAN Pipeline — Complete Developer Guide · June 2026 · github.com/baudhya/gan-pipeline
+  </div>
+</div>
+
+</body>
+</html>
