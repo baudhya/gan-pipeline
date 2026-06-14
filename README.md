@@ -376,7 +376,8 @@ gan-pipeline/
 │   ├── Dockerfile                  # PyTorch CUDA runtime image
 │   └── docker-compose.yml          # Services: train, mlflow, generate
 │
-├── .github/workflows/ci.yml        # GitHub Actions: lint → typecheck → pytest
+├── .github/workflows/pre-commit.yml # GitHub Actions: lint → typecheck → pytest
+├── .github/workflows/pytest.yml    # GitHub Actions: full test suite
 ├── pyproject.toml                  # Package metadata, deps, tool config
 ├── Makefile                        # Common dev commands
 └── .env.example                    # Environment variable template
@@ -429,7 +430,7 @@ pip install -e ".[dev,geo]"
 
 ### Pre-commit hooks
 
-The repo ships a `.pre-commit-config.yaml` that runs **ruff**, **black**, **isort**, and **mypy** automatically before every `git commit`. Once installed, a commit is rejected if any check fails — the same gates that run in CI.
+The repo ships a `.pre-commit-config.yaml` that runs **ruff**, **black**, **isort**, **mypy**, and **pytest** automatically before every `git commit`. Once installed, a commit is rejected if any check fails — the same gates that run in CI.
 
 **One-time setup** (after cloning or after `pip install -e ".[dev]"`):
 
@@ -459,6 +460,7 @@ git commit --no-verify -m "wip: ..."
 | `black format check` | `black --check src tests scripts` | Any file would be reformatted |
 | `isort import check` | `isort --check-only src tests scripts` | Imports are not sorted |
 | `mypy type check` | `mypy src` | Any type error in `src/` |
+| `pytest` | `pytest --no-header -q` | Any test fails |
 
 To fix formatting issues automatically before committing, run `make format` first, then re-stage and commit.
 

@@ -32,3 +32,11 @@ repos:
         args: [src]
         pass_filenames: false
         always_run: true
+
+      - id: pytest
+        name: pytest
+        entry: pytest
+        language: system
+        args: [--no-header, -q]
+        pass_filenames: false
+        always_run: true
