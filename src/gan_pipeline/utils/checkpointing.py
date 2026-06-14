@@ -29,4 +29,4 @@ def save_checkpoint(
 
 
 def load_checkpoint(path: Path, device: torch.device) -> dict[str, Any]:
-    return torch.load(path, map_location=device, weights_only=False)  # type: ignore[return-value]
+    return torch.load(path, map_location=device, weights_only=False)  # type: ignore[no-any-return]

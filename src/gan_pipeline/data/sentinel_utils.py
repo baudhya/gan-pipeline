@@ -15,24 +15,27 @@ maps [0,255] → [-1,1] via ToTensor then Normalize.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
+from numpy.typing import NDArray
 
 # ---------------------------------------------------------------------------
 # SAR utilities
 # ---------------------------------------------------------------------------
 
 
-def linear_to_db(arr: np.ndarray, eps: float = 1e-10) -> np.ndarray:
+def linear_to_db(arr: NDArray[Any], eps: float = 1e-10) -> NDArray[Any]:
     """Convert linear power (intensity) to dB. Safe against zeros."""
-    return 10.0 * np.log10(np.maximum(arr, eps))
+    return 10.0 * np.log10(np.maximum(arr, eps))  # type: ignore[no-any-return]
 
 
 def normalize_sar(
-    arr: np.ndarray,
+    arr: NDArray[Any],
     min_db: float = -25.0,
     max_db: float = 0.0,
     already_db: bool = False,
-) -> np.ndarray:
+) -> NDArray[Any]:
     """
     Normalize a SAR channel to uint8 [0, 255].
 
@@ -49,13 +52,13 @@ def normalize_sar(
 
 
 def make_sar_image(
-    bands: np.ndarray,
+    bands: NDArray[Any],
     sar_channels: int = 1,
     channel_idx: int = 0,
     min_db: float = -25.0,
     max_db: float = 0.0,
     already_db: bool = False,
-) -> np.ndarray:
+) -> NDArray[Any]:
     """
     Build an H×W (1-ch) or H×W×3 (3-ch) uint8 SAR image.
 
@@ -95,10 +98,10 @@ S2_RGB_INDICES_STANDARD = (3, 2, 1)  # B04, B03, B02 in standard ESA order (B01 
 
 
 def normalize_eo(
-    arr: np.ndarray,
+    arr: NDArray[Any],
     reflectance_scale: float = 10_000.0,
     reflectance_cap: float = 0.3,
-) -> np.ndarray:
+) -> NDArray[Any]:
     """
     Normalize a single EO channel to uint8 [0, 255].
 
@@ -115,11 +118,11 @@ def normalize_eo(
 
 
 def make_eo_image(
-    bands: np.ndarray,
+    bands: NDArray[Any],
     rgb_indices: tuple[int, int, int] = S2_RGB_INDICES_SEN12MS,
     reflectance_scale: float = 10_000.0,
     reflectance_cap: float = 0.3,
-) -> np.ndarray:
+) -> NDArray[Any]:
     """
     Build an H×W×3 uint8 RGB EO image from a multi-band Sentinel-2 array.
 
@@ -143,7 +146,7 @@ def make_eo_image(
 # ---------------------------------------------------------------------------
 
 
-def is_valid_patch(arr: np.ndarray, min_valid_fraction: float = 0.8) -> bool:
+def is_valid_patch(arr: NDArray[Any], min_valid_fraction: float = 0.8) -> bool:
     """
     Return True if the patch has enough valid (non-NaN, non-zero) pixels.
 
@@ -158,7 +161,7 @@ def is_valid_patch(arr: np.ndarray, min_valid_fraction: float = 0.8) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def make_side_by_side(sar_img: np.ndarray, eo_img: np.ndarray) -> np.ndarray:
+def make_side_by_side(sar_img: NDArray[Any], eo_img: NDArray[Any]) -> NDArray[Any]:
     """
     Concatenate SAR and EO images side-by-side into a [SAR | EO] uint8 image.
 

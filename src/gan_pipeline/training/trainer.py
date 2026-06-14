@@ -77,7 +77,7 @@ class GANTrainer:
                 d_loss = d_loss + self.cfg.training.gradient_penalty_lambda * gp
 
             self.opt_d.zero_grad()
-            d_loss.backward()
+            d_loss.backward()  # type: ignore[no-untyped-call]
             self.opt_d.step()
 
         # Generator update
@@ -87,7 +87,7 @@ class GANTrainer:
         g_loss = generator_loss(fake_logits, self.loss_type)
 
         self.opt_g.zero_grad()
-        g_loss.backward()
+        g_loss.backward()  # type: ignore[no-untyped-call]
         self.opt_g.step()
 
         return d_loss.item(), g_loss.item()

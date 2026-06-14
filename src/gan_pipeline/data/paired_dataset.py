@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
 
-class SideBySidePairedDataset(Dataset):
+class SideBySidePairedDataset(Dataset[dict[str, torch.Tensor]]):
     """
     Loads SAR/EO pairs stored as a single [SAR | EO] image (standard pix2pix format).
     SAR is the left half, EO is the right half.
@@ -45,7 +45,7 @@ class SideBySidePairedDataset(Dataset):
     def _to_tensor_normalized(self, img: Image.Image) -> torch.Tensor:
         t = TF.to_tensor(img)  # [0, 1]
         ch = t.shape[0]
-        return TF.normalize(t, [0.5] * ch, [0.5] * ch)  # [-1, 1]
+        return TF.normalize(t, [0.5] * ch, [0.5] * ch)  # type: ignore[no-any-return]
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         full = Image.open(self.files[idx])
@@ -99,7 +99,7 @@ class SideBySidePairedDataset(Dataset):
         }
 
 
-class SeparateDirPairedDataset(Dataset):
+class SeparateDirPairedDataset(Dataset[dict[str, torch.Tensor]]):
     """
     Loads SAR/EO pairs from two separate directories (trainA/ = SAR, trainB/ = EO).
     Filenames must match across both directories.
@@ -139,7 +139,7 @@ class SeparateDirPairedDataset(Dataset):
     def _to_tensor_normalized(self, img: Image.Image) -> torch.Tensor:
         t = TF.to_tensor(img)
         ch = t.shape[0]
-        return TF.normalize(t, [0.5] * ch, [0.5] * ch)
+        return TF.normalize(t, [0.5] * ch, [0.5] * ch)  # type: ignore[no-any-return]
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         sar_pil = Image.open(self.sar_files[idx]).convert("L" if self.sar_channels == 1 else "RGB")
@@ -195,6 +195,7 @@ def get_paired_dataloader(
     augment: bool = True,
     dataset_format: str = "side_by_side",
 ) -> DataLoader:  # type: ignore[type-arg]
+    dataset: Dataset[dict[str, torch.Tensor]]
     if dataset_format == "side_by_side":
         dataset = SideBySidePairedDataset(
             root, split, image_size, sar_channels, eo_channels, augment

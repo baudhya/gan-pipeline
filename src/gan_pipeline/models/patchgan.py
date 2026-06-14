@@ -54,16 +54,16 @@ class PatchGANDiscriminator(BaseDiscriminator):
                 nn.init.normal_(m.weight, 0.0, 0.02)
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.normal_(m.weight, 1.0, 0.02)
-                nn.init.zeros_(m.bias)  # type: ignore[arg-type]
+                nn.init.zeros_(m.bias)
 
     def _apply_spectral_norm(self) -> None:
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn_utils.spectral_norm(m)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """x: pre-concatenated (sar, eo) tensor of shape (B, sar_ch+eo_ch, H, W)."""
-        return self.net(x)
+        return self.net(x)  # type: ignore[no-any-return]
 
     def forward_with_features(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """Run the network and return (logit_map, [intermediate_feature, ...]).

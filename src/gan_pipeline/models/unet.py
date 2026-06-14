@@ -77,9 +77,9 @@ class UNetGenerator(BaseGenerator):
                 nn.init.normal_(m.weight, 0.0, 0.02)
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.normal_(m.weight, 1.0, 0.02)
-                nn.init.zeros_(m.bias)  # type: ignore[arg-type]
+                nn.init.zeros_(m.bias)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         e1 = self.enc1(x)  # (bf,    128, 128)
         e2 = self.enc2(e1)  # (bf*2,  64,  64)
         e3 = self.enc3(e2)  # (bf*4,  32,  32)
@@ -96,4 +96,4 @@ class UNetGenerator(BaseGenerator):
         d = self.dec5(torch.cat([d, e4], dim=1))  # (bf*4,  32,  32)
         d = self.dec6(torch.cat([d, e3], dim=1))  # (bf*2,  64,  64)
         d = self.dec7(torch.cat([d, e2], dim=1))  # (bf,    128, 128)
-        return self.out_conv(torch.cat([d, e1], dim=1))  # (out_ch, 256, 256)
+        return self.out_conv(torch.cat([d, e1], dim=1))  # type: ignore[no-any-return]

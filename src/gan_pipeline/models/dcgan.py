@@ -1,5 +1,6 @@
 import math
 
+import torch
 import torch.nn as nn
 
 from gan_pipeline.models.base import BaseDiscriminator, BaseGenerator
@@ -27,7 +28,7 @@ def _init_weights(module: nn.Module) -> None:
         nn.init.normal_(module.weight, 0.0, 0.02)
     elif isinstance(module, nn.BatchNorm2d):
         nn.init.normal_(module.weight, 1.0, 0.02)
-        nn.init.zeros_(module.bias)  # type: ignore[arg-type]
+        nn.init.zeros_(module.bias)
 
 
 class DCGANGenerator(BaseGenerator):
@@ -61,8 +62,8 @@ class DCGANGenerator(BaseGenerator):
 
         self.apply(_init_weights)
 
-    def forward(self, z):  # type: ignore[override]
-        return self.blocks(self.project(z.view(z.size(0), -1, 1, 1)))
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        return self.blocks(self.project(z.view(z.size(0), -1, 1, 1)))  # type: ignore[no-any-return]
 
 
 class DCGANDiscriminator(BaseDiscriminator):
@@ -87,5 +88,5 @@ class DCGANDiscriminator(BaseDiscriminator):
 
         self.apply(_init_weights)
 
-    def forward(self, x):  # type: ignore[override]
-        return self.net(x).view(-1)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x).view(-1)  # type: ignore[no-any-return]

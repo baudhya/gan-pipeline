@@ -150,4 +150,4 @@ def gradient_penalty(
         retain_graph=True,
     )[0]
     grad = grad.view(batch_size, -1)
-    return ((grad.norm(2, dim=1) - 1) ** 2).mean()
+    return ((grad.norm(2, dim=1) - 1) ** 2).mean()  # type: ignore[no-any-return]

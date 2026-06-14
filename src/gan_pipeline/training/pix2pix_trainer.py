@@ -99,7 +99,7 @@ class Pix2PixTrainer:
         d_loss = multiscale_discriminator_loss(real_maps, fake_maps, self.loss_type)
 
         self.opt_d.zero_grad()
-        d_loss.backward()
+        d_loss.backward()  # type: ignore[no-untyped-call]
         self.opt_d.step()
 
         # --- Generator ---
@@ -130,7 +130,7 @@ class Pix2PixTrainer:
             g_vgg_val = g_vgg.item()
 
         self.opt_g.zero_grad()
-        g_loss.backward()
+        g_loss.backward()  # type: ignore[no-untyped-call]
         self.opt_g.step()
 
         return d_loss.item(), g_adv.item(), g_l1.item(), g_vgg_val, g_fm_val

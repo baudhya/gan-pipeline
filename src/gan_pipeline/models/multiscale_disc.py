@@ -1,5 +1,7 @@
 """Multi-scale PatchGAN discriminator (pix2pix HD style)."""
 
+from typing import cast
+
 import torch
 import torch.nn as nn
 
@@ -66,7 +68,7 @@ class MultiScaleDiscriminator(nn.Module):
         for i, disc in enumerate(self.discriminators):
             if i > 0:
                 x = self.downsample(x)
-            logit, feats = disc.forward_with_features(x)
+            logit, feats = cast(PatchGANDiscriminator, disc).forward_with_features(x)
             logits.append(logit)
             all_features.append(feats)
         return logits, all_features

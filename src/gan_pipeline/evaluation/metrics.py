@@ -6,7 +6,7 @@ from loguru import logger
 
 def compute_fid(real_path: Path, fake_path: Path, device: torch.device) -> float:
     try:
-        from torch_fidelity import calculate_metrics  # type: ignore[import-untyped]
+        from torch_fidelity import calculate_metrics
 
         metrics = calculate_metrics(
             input1=str(real_path),
@@ -25,7 +25,7 @@ def compute_inception_score(
     fake_path: Path, device: torch.device, splits: int = 10
 ) -> tuple[float, float]:
     try:
-        from torch_fidelity import calculate_metrics  # type: ignore[import-untyped]
+        from torch_fidelity import calculate_metrics
 
         metrics = calculate_metrics(
             input1=str(fake_path),

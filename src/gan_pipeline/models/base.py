@@ -13,7 +13,7 @@ class BaseGenerator(nn.Module, ABC):
     def sample(self, n: int, device: torch.device) -> torch.Tensor:
         z = torch.randn(n, self.latent_dim, device=device)
         with torch.no_grad():
-            return self(z)
+            return self(z)  # type: ignore[no-any-return]
 
 
 class BaseDiscriminator(nn.Module, ABC):
