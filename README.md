@@ -1,11 +1,8 @@
 # GAN Pipeline
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![CI](https://github.com/baudhya/gan-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/ci.yml)
-[![mypy](https://github.com/baudhya/gan-pipeline/actions/workflows/mypy.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/mypy.yml)
-[![ruff](https://github.com/baudhya/gan-pipeline/actions/workflows/ruff.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/ruff.yml)
-[![pytest](https://github.com/baudhya/gan-pipeline/actions/workflows/pytest.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/pytest.yml)
 [![pre-commit](https://github.com/baudhya/gan-pipeline/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/pre-commit.yml)
+[![pytest](https://github.com/baudhya/gan-pipeline/actions/workflows/pytest.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/pytest.yml)
 
 Production-grade SAR→EO image translation pipeline built on **pix2pix** with a **U-Net generator**, **multi-scale PatchGAN discriminator**, **hinge loss**, **VGG perceptual loss**, and **feature matching loss**. Supports unconditional DCGAN training as well.
 
