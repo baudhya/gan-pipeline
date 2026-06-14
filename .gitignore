@@ -12,6 +12,7 @@ venv/
 # ML artifacts
 outputs/
 mlruns/
+mlflow.db
 /data/
 *.pt
 *.pth

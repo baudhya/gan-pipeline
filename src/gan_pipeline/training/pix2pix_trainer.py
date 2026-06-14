@@ -160,6 +160,7 @@ class Pix2PixTrainer:
 
     def train(self, dataloader: DataLoader) -> None:  # type: ignore[type-arg]
         n_scales = len(self.discriminator.discriminators)
+        mlflow.set_tracking_uri("sqlite:///mlflow.db")
         mlflow.set_experiment(self.cfg.experiment_name)
 
         with mlflow.start_run():

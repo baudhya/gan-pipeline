@@ -1,5 +1,5 @@
 .PHONY: install venv lint format typecheck test train generate download-weights \
-        clean clean-venv clean-all
+        mlflow clean clean-venv clean-all
 
 VENV_DIR ?= .venv
 PYTHON   ?= python3
@@ -59,6 +59,9 @@ generate:
 	python scripts/generate.py checkpoint=outputs/dcgan_baseline/checkpoints/epoch_0199.pt
 
 # ── Docker ────────────────────────────────────────────────────────────────────
+
+mlflow:
+	mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
 
 docker-build:
 	docker compose -f docker/docker-compose.yml build

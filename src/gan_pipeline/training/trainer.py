@@ -101,6 +101,7 @@ class GANTrainer:
         save_image(samples, self.output_dir / "samples" / f"epoch_{epoch:04d}.png", nrow=8)
 
     def train(self, dataloader: DataLoader) -> None:  # type: ignore[type-arg]
+        mlflow.set_tracking_uri("sqlite:///mlflow.db")
         mlflow.set_experiment(self.cfg.experiment_name)
 
         with mlflow.start_run():

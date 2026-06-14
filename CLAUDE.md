@@ -69,8 +69,9 @@ python scripts/train.py model=dcgan training=default data=celeba         # uncon
 # Evaluation
 python scripts/evaluate.py checkpoint=outputs/.../epoch_0199.pt real_dir=data/sar_eo/test
 
-# MLflow UI
-mlflow ui --port 5000               # view at http://localhost:5000
+# MLflow UI (MLflow 3.x stores in sqlite:///mlflow.db)
+make mlflow                         # opens UI at http://localhost:5000
+mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000  # equivalent manual command
 ```
 
 ---
