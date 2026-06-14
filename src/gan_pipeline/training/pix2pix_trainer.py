@@ -47,8 +47,10 @@ class Pix2PixTrainer:
         self.loss_type = LossType(cfg.training.loss_type)
         self.lambda_l1: float = cfg.training.lambda_l1
         self.lambda_vgg: float = float(cfg.training.get("lambda_vgg", 0.0))
+        _vgg_weights_path: str | None = cfg.training.get("vgg_weights_path", None)
         self.vgg_loss: VGGPerceptualLoss | None = (
-            VGGPerceptualLoss().to(device) if self.lambda_vgg > 0 else None
+            VGGPerceptualLoss(weights_path=_vgg_weights_path).to(device)
+            if self.lambda_vgg > 0 else None
         )
         self.lambda_fm: float = float(cfg.training.get("lambda_fm", 0.0))
 

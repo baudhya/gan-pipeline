@@ -92,11 +92,20 @@ class VGGPerceptualLoss(nn.Module):
     mean: torch.Tensor
     std: torch.Tensor
 
-    def __init__(self) -> None:
+    def __init__(self, weights_path: str | None = None) -> None:
         super().__init__()
-        feats = torchvision.models.vgg16(
-            weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1
-        ).features
+        vgg = torchvision.models.vgg16(weights=None)
+        if weights_path is not None:
+            # Offline / air-gapped: load from a local .pth file.
+            # Pre-download: python -c "import torchvision; torchvision.models.vgg16(weights='IMAGENET1K_V1')"
+            # then copy ~/.cache/torch/hub/checkpoints/vgg16-397923af.pth to the target machine.
+            state = torch.load(weights_path, map_location="cpu", weights_only=True)
+            vgg.load_state_dict(state)
+        else:
+            vgg = torchvision.models.vgg16(
+                weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1
+            )
+        feats = vgg.features
         self.slice1 = feats[:4]    # relu1_2
         self.slice2 = feats[4:9]   # relu2_2
         self.slice3 = feats[9:16]  # relu3_3

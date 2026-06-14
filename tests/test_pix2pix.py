@@ -77,6 +77,23 @@ def test_multiscale_patch_shapes_256() -> None:
     assert maps[0].shape[-1] > maps[1].shape[-1] > maps[2].shape[-1]
 
 
+def test_vgg_perceptual_loss_offline_path(tmp_path: Path) -> None:
+    """VGGPerceptualLoss loads weights from a local file (no network needed)."""
+    import torchvision.models as tvm
+    from gan_pipeline.models.losses import VGGPerceptualLoss
+
+    # Save a random-weight VGG16 state dict to disk
+    weights_file = tmp_path / "vgg16.pth"
+    torch.save(tvm.vgg16(weights=None).state_dict(), weights_file)
+
+    loss_fn = VGGPerceptualLoss(weights_path=str(weights_file))
+    fake = torch.randn(1, 3, 64, 64)
+    real = torch.randn(1, 3, 64, 64)
+    loss = loss_fn(fake, real)
+    assert loss.shape == torch.Size([])
+    assert torch.isfinite(loss)
+
+
 @pytest.mark.parametrize("channels", [1, 3, 4])
 def test_vgg_perceptual_loss(channels: int) -> None:
     """VGGPerceptualLoss: correct scalar output, finite, zero on identical inputs."""
