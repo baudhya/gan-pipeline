@@ -7,7 +7,7 @@ beta2: 0.999
 loss_type: hinge
 lambda_l1: 100.0
 lambda_vgg: 10.0
-vgg_weights_path: null   # null = download on first use; for offline use: run `make download-weights`, then set to weights/vgg16-397923af.pth
+vgg_weights_path: weights/vgg16-397923af.pth   # run `make download-weights` once to populate; set to null to download on first use instead
 lambda_fm: 10.0
 save_every: 10
 sample_every: 5
