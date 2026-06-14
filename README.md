@@ -1197,6 +1197,7 @@ pytest --cov=gan_pipeline --cov-report=term-missing
 ### Makefile shortcuts
 
 ```bash
+make venv              # create .venv virtual environment (PYTHON= and VENV_DIR= overridable)
 make install           # pip install -e ".[dev]"
 make test              # pytest
 make lint              # ruff + black --check + isort --check
@@ -1207,6 +1208,8 @@ make prepare-data      # python scripts/prepare_data.py (sen12ms mode, edit path
 make train             # python scripts/train_pix2pix.py
 make train-dcgan       # python scripts/train.py model=dcgan ...
 make clean             # remove __pycache__, .pytest_cache, .mypy_cache, egg-info
+make clean-venv        # remove .venv
+make clean-all         # clean + clean-venv
 ```
 
 **Pre-commit:**
