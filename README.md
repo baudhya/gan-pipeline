@@ -50,7 +50,7 @@ Pix2pix is the standard conditional image-to-image translation framework. Unlike
 - Experiment tracking via [MLflow](https://mlflow.org/) out of the box
 - Multi-scale discriminator for both local texture and global structure discrimination
 - Synchronized data augmentation across SAR/EO pairs
-- 67 passing tests with parametrized coverage of shapes, loss types, and scales
+- 68 passing tests with parametrized coverage of shapes, loss types, and scales
 - Docker + docker-compose for reproducible deployment
 - GitHub Actions CI pipeline (lint → typecheck → test)
 
@@ -251,6 +251,21 @@ L_VGG = Σ_{i=1}^{4}  L1( VGG_i(fake_EO),  VGG_i(real_EO) )
 The VGG network is frozen (`requires_grad=False`) and moved to the training device automatically. Inputs in `[-1, 1]` are rescaled to ImageNet-normalized `[0, 1]` internally. Single-channel (grayscale) SAR inputs passed by accident are expanded to 3 channels; tensors with more than 3 channels are truncated to the first three (RGB).
 
 Setting `lambda_vgg: 0.0` disables the loss entirely without instantiating the VGG network — useful for CI or low-memory environments.
+
+**Offline / air-gapped use:** by default, VGG16 weights are downloaded from PyTorch Hub on first use and cached at `~/.cache/torch/hub/checkpoints/vgg16-397923af.pth`. On machines without internet access, pre-download the file on a connected machine and point the config at it:
+
+```bash
+# On a machine with internet — download and locate the cache file
+python -c "import torchvision; torchvision.models.vgg16(weights='IMAGENET1K_V1')"
+# → ~/.cache/torch/hub/checkpoints/vgg16-397923af.pth
+
+# Copy to the air-gapped machine, then set in config:
+#   training.vgg_weights_path: /path/to/vgg16-397923af.pth
+# or pass as a CLI override:
+python scripts/train_pix2pix.py training.vgg_weights_path=/path/to/vgg16-397923af.pth
+```
+
+When `vgg_weights_path` is set, the file is loaded with `torch.load(..., weights_only=True)`; no network access is required. Leave it as `null` (the default) for the standard online behaviour.
 
 #### Feature Matching Loss
 
@@ -842,6 +857,7 @@ python scripts/train.py model=dcgan training=default data=celeba
 | `training.loss_type` | `hinge` | Loss function: `hinge`, `bce`, or `wasserstein` |
 | `training.lambda_l1` | `100.0` | Weight of pixel-level L1 loss term |
 | `training.lambda_vgg` | `10.0` | Weight of VGG perceptual loss; set to `0.0` to disable |
+| `training.vgg_weights_path` | `null` | Local path to `vgg16-*.pth` for offline use; `null` = download on first run |
 | `training.lambda_fm` | `10.0` | Weight of feature matching loss; set to `0.0` to disable |
 | `training.save_every` | `10` | Save checkpoint every N epochs |
 | `training.sample_every` | `5` | Save sample grid every N epochs |
@@ -1074,7 +1090,7 @@ CUDA_VISIBLE_DEVICES=0
 ## Running Tests
 
 ```bash
-# All tests (67 total)
+# All tests (68 total)
 pytest
 
 # Verbose output
@@ -1097,7 +1113,7 @@ pytest --cov=gan_pipeline --cov-report=term-missing
 |---|---|---|
 | `test_data.py` | 4 | Transform output shape (32/64/128), pixel range [-1, 1] |
 | `test_models.py` | 8 | DCGAN generator/discriminator shapes; BCE/Wasserstein/Hinge losses; gradient penalty; `sample()` |
-| `test_pix2pix.py` | 28 | U-Net output shape (1→3, 3→3, 1→1 ch); skip-connection gradients; PatchGAN patch map shape (~30×30), spectral norm on/off (weight_orig presence), and `forward_with_features` structure; multi-scale output lengths, decreasing spatial sizes, SN threading, and `forward_with_features` per scale; all loss types on multi-scale maps; VGG perceptual loss (1/3/4-channel inputs, zero on identical); feature matching loss (scalar, finite, zero on identical); train step (hinge×3scale, bce×1scale, hinge×2scale); side-by-side dataset load and augmentation |
+| `test_pix2pix.py` | 29 | U-Net output shape (1→3, 3→3, 1→1 ch); skip-connection gradients; PatchGAN patch map shape (~30×30), spectral norm on/off (weight_orig presence), and `forward_with_features` structure; multi-scale output lengths, decreasing spatial sizes, SN threading, and `forward_with_features` per scale; all loss types on multi-scale maps; VGG perceptual loss (1/3/4-channel inputs, zero on identical, offline weights_path); feature matching loss (scalar, finite, zero on identical); train step (hinge×3scale, bce×1scale, hinge×2scale); side-by-side dataset load and augmentation |
 | `test_sentinel_utils.py` | 19 | `linear_to_db` correctness and zero-safety; SAR/EO normalization ranges and clipping; `make_sar_image` channel configs (1/3ch) and input layouts (CHW/HWC); `make_eo_image` shape; `is_valid_patch` NaN/zero rejection; `make_side_by_side` shape, broadcast, spatial mismatch error, SAR-on-left |
 | `test_training.py` | 2 | Checkpoint save/load round-trip; DCGAN trainer step (finite float losses) |
 
