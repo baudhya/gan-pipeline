@@ -102,14 +102,12 @@ class VGGPerceptualLoss(nn.Module):
             state = torch.load(weights_path, map_location="cpu", weights_only=True)
             vgg.load_state_dict(state)
         else:
-            vgg = torchvision.models.vgg16(
-                weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1
-            )
+            vgg = torchvision.models.vgg16(weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1)
         feats = vgg.features
-        self.slice1 = feats[:4]    # relu1_2
-        self.slice2 = feats[4:9]   # relu2_2
+        self.slice1 = feats[:4]  # relu1_2
+        self.slice2 = feats[4:9]  # relu2_2
         self.slice3 = feats[9:16]  # relu3_3
-        self.slice4 = feats[16:23] # relu4_3
+        self.slice4 = feats[16:23]  # relu4_3
         for p in self.parameters():
             p.requires_grad_(False)
         self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))

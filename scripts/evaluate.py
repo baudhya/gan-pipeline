@@ -1,4 +1,5 @@
 """Compute FID and IS for a trained checkpoint."""
+
 from pathlib import Path
 
 import hydra

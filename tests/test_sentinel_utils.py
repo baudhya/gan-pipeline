@@ -1,4 +1,5 @@
 """Tests for Sentinel-1/2 preprocessing utilities."""
+
 import numpy as np
 import pytest
 
@@ -14,6 +15,7 @@ from gan_pipeline.data.sentinel_utils import (
 
 # --- linear_to_db ---
 
+
 def test_linear_to_db_basic() -> None:
     arr = np.array([1.0, 10.0, 100.0])
     db = linear_to_db(arr)
@@ -27,6 +29,7 @@ def test_linear_to_db_zero_safe() -> None:
 
 
 # --- normalize_sar ---
+
 
 def test_normalize_sar_range() -> None:
     arr = np.array([-25.0, -12.5, 0.0])
@@ -51,8 +54,9 @@ def test_normalize_sar_linear_input() -> None:
 
 # --- normalize_eo ---
 
+
 def test_normalize_eo_range() -> None:
-    arr = np.array([0, 1500, 3000], dtype=np.uint16)   # 3000/10000 = 0.3 = cap → 255
+    arr = np.array([0, 1500, 3000], dtype=np.uint16)  # 3000/10000 = 0.3 = cap → 255
     out = normalize_eo(arr, reflectance_scale=10_000.0, reflectance_cap=0.3)
     assert out.dtype == np.uint8
     assert out[0] == 0
@@ -67,9 +71,10 @@ def test_normalize_eo_clips_bright_pixels() -> None:
 
 # --- make_sar_image ---
 
+
 @pytest.mark.parametrize("sar_channels", [1, 3])
 def test_make_sar_image_channels(sar_channels: int) -> None:
-    bands = np.random.rand(2, 64, 64).astype(np.float32)   # (C, H, W) linear scale
+    bands = np.random.rand(2, 64, 64).astype(np.float32)  # (C, H, W) linear scale
     out = make_sar_image(bands, sar_channels=sar_channels)
     assert out.dtype == np.uint8
     expected_ch = 1 if sar_channels == 1 else 3
@@ -77,12 +82,13 @@ def test_make_sar_image_channels(sar_channels: int) -> None:
 
 
 def test_make_sar_image_hwc_input() -> None:
-    bands = np.random.rand(64, 64, 2).astype(np.float32)   # (H, W, C)
+    bands = np.random.rand(64, 64, 2).astype(np.float32)  # (H, W, C)
     out = make_sar_image(bands, sar_channels=1)
     assert out.shape == (64, 64, 1)
 
 
 # --- make_eo_image ---
+
 
 def test_make_eo_image_shape() -> None:
     bands = np.random.randint(0, 3000, (13, 64, 64), dtype=np.uint16)
@@ -99,6 +105,7 @@ def test_make_eo_image_hwc_input() -> None:
 
 # --- is_valid_patch ---
 
+
 def test_valid_patch_all_finite() -> None:
     arr = np.ones((64, 64), dtype=np.float32)
     assert is_valid_patch(arr, min_valid_fraction=0.8)
@@ -106,7 +113,7 @@ def test_valid_patch_all_finite() -> None:
 
 def test_invalid_patch_mostly_nan() -> None:
     arr = np.full((64, 64), np.nan, dtype=np.float32)
-    arr[:5, :5] = 1.0   # only a small corner is valid
+    arr[:5, :5] = 1.0  # only a small corner is valid
     assert not is_valid_patch(arr, min_valid_fraction=0.8)
 
 
@@ -118,11 +125,12 @@ def test_invalid_patch_mostly_zero() -> None:
 
 # --- make_side_by_side ---
 
+
 def test_side_by_side_shape() -> None:
     sar = np.zeros((64, 64, 1), dtype=np.uint8)
     eo = np.zeros((64, 64, 3), dtype=np.uint8)
     out = make_side_by_side(sar, eo)
-    assert out.shape == (64, 128, 3)   # width doubles, single-ch SAR → 3ch
+    assert out.shape == (64, 128, 3)  # width doubles, single-ch SAR → 3ch
 
 
 def test_side_by_side_both_3ch() -> None:

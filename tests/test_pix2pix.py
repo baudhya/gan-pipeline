@@ -1,4 +1,5 @@
 """Tests for pix2pix: U-Net, PatchGAN, multi-scale discriminator, paired dataset, trainer."""
+
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,7 @@ from gan_pipeline.models.patchgan import PatchGANDiscriminator
 from gan_pipeline.models.unet import UNetGenerator
 
 # --- U-Net Generator ---
+
 
 @pytest.mark.parametrize("sar_ch,eo_ch", [(1, 3), (3, 3), (1, 1)])
 def test_unet_output_shape(sar_ch: int, eo_ch: int) -> None:
@@ -31,6 +33,7 @@ def test_unet_skip_connections_preserve_gradients() -> None:
 
 
 # --- PatchGAN Discriminator ---
+
 
 @pytest.mark.parametrize("sar_ch,eo_ch", [(1, 3), (3, 3)])
 def test_patchgan_output_shape(sar_ch: int, eo_ch: int) -> None:
@@ -53,6 +56,7 @@ def test_patchgan_patch_size_256() -> None:
 
 
 # --- MultiScaleDiscriminator ---
+
 
 @pytest.mark.parametrize("n_scales", [1, 2, 3])
 def test_multiscale_output_length(n_scales: int) -> None:
@@ -103,6 +107,7 @@ def test_vgg_perceptual_loss(channels: int) -> None:
     dummy_vgg = tvm.vgg16(weights=None)  # random weights — no network download
     with patch("torchvision.models.vgg16", return_value=dummy_vgg):
         from gan_pipeline.models.losses import VGGPerceptualLoss
+
         loss_fn = VGGPerceptualLoss()
 
     fake = torch.randn(2, channels, 64, 64)
@@ -124,11 +129,13 @@ def test_patchgan_spectral_norm(spectral_norm: bool) -> None:
     conv_layers = [m for m in d.modules() if isinstance(m, nn.Conv2d)]
 
     if spectral_norm:
-        assert all(hasattr(m, "weight_orig") for m in conv_layers), \
-            "All Conv2d layers should have weight_orig after spectral_norm"
+        assert all(
+            hasattr(m, "weight_orig") for m in conv_layers
+        ), "All Conv2d layers should have weight_orig after spectral_norm"
     else:
-        assert not any(hasattr(m, "weight_orig") for m in conv_layers), \
-            "No Conv2d layers should have weight_orig without spectral_norm"
+        assert not any(
+            hasattr(m, "weight_orig") for m in conv_layers
+        ), "No Conv2d layers should have weight_orig without spectral_norm"
 
     # Forward pass should work regardless
     x = torch.randn(2, 4, 256, 256)
@@ -212,6 +219,7 @@ def test_multiscale_discriminator_loss() -> None:
 
 # --- End-to-end pix2pix train step (multi-scale + hinge) ---
 
+
 @pytest.mark.parametrize("loss_type,n_scales", [("hinge", 3), ("bce", 1), ("hinge", 2)])
 def test_pix2pix_train_step(
     loss_type: str, n_scales: int, cfg, device: torch.device, tmp_path: Path
@@ -240,10 +248,11 @@ def test_pix2pix_train_step(
     assert all(isinstance(v, float) for v in [d_loss, g_adv, g_l1, g_vgg, g_fm])
     assert all(not (v != v) for v in [d_loss, g_adv, g_l1, g_vgg, g_fm])  # no NaN
     assert g_vgg == 0.0  # VGG disabled
-    assert g_fm == 0.0   # FM disabled
+    assert g_fm == 0.0  # FM disabled
 
 
 # --- Paired dataset ---
+
 
 def _make_side_by_side_dir(tmp_path: Path, n: int = 4, sar_mode: str = "L") -> Path:
     """Create a minimal side-by-side paired dataset for testing."""

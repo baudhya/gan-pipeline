@@ -1,4 +1,5 @@
 """Main training entry point."""
+
 import random
 from pathlib import Path
 

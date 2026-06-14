@@ -87,6 +87,7 @@ from gan_pipeline.data.sentinel_utils import (
 try:
     import rasterio
     from rasterio.windows import Window
+
     HAS_RASTERIO = True
 except ImportError:
     HAS_RASTERIO = False
@@ -95,6 +96,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _require_rasterio() -> None:
     if not HAS_RASTERIO:
@@ -136,8 +138,8 @@ def _split_indices(
     n_test = max(1, int(n * test_split))
     n_val = max(1, int(n * val_split))
     test = indices[:n_test]
-    val = indices[n_test:n_test + n_val]
-    train = indices[n_test + n_val:]
+    val = indices[n_test : n_test + n_val]
+    train = indices[n_test + n_val :]
     return train, val, test
 
 
@@ -154,6 +156,7 @@ def _make_split_dirs(output_dir: Path) -> dict[str, Path]:
 # Mode: SEN12MS
 # ---------------------------------------------------------------------------
 
+
 def _discover_sen12ms_pairs(s1_root: Path, s2_root: Path) -> list[tuple[Path, Path]]:
     """
     Discover matching (s1_patch, s2_patch) GeoTIFF pairs from a SEN12MS directory tree.
@@ -169,8 +172,8 @@ def _discover_sen12ms_pairs(s1_root: Path, s2_root: Path) -> list[tuple[Path, Pa
         # e.g. ROIs1158_spring_s1_1/s1_1.tif
         # key: (roi_season, scene_id, patch_id)
         parts = f.parts
-        scene_dir = parts[-2]          # e.g. ROIs1158_spring_s1_1
-        patch_stem = f.stem            # e.g. s1_1
+        scene_dir = parts[-2]  # e.g. ROIs1158_spring_s1_1
+        patch_stem = f.stem  # e.g. s1_1
         patch_id = patch_stem.split("_")[-1]
         # Normalise scene dir: drop the "s1" sensor tag for matching
         scene_key = scene_dir.replace("_s1_", "_").replace("_s2_", "_")
@@ -218,7 +221,7 @@ def process_sen12ms(args: argparse.Namespace) -> None:
 
     for idx, (s1_path, s2_path) in enumerate(tqdm(pairs, desc="Processing patches")):
         try:
-            s1_bands = _read_geotiff(s1_path)   # (C, H, W) float32
+            s1_bands = _read_geotiff(s1_path)  # (C, H, W) float32
             s2_bands = _read_geotiff(s2_path)
 
             # Quality check on both arrays
@@ -262,6 +265,7 @@ def process_sen12ms(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 # Mode: co-registered scenes
 # ---------------------------------------------------------------------------
+
 
 def _iter_scene_pairs(s1_root: Path, s2_root: Path) -> list[tuple[Path, Path]]:
     """
@@ -385,6 +389,7 @@ def process_scenes(args: argparse.Namespace) -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -392,56 +397,109 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p.add_argument(
-        "--mode", required=True, choices=["sen12ms", "scenes"],
+        "--mode",
+        required=True,
+        choices=["sen12ms", "scenes"],
         help="Processing mode (see module docstring for details)",
     )
-    p.add_argument("--s1-dir", required=True, metavar="PATH",
-                   help="Root directory containing Sentinel-1 GeoTIFFs")
-    p.add_argument("--s2-dir", required=True, metavar="PATH",
-                   help="Root directory containing Sentinel-2 GeoTIFFs")
-    p.add_argument("--output-dir", default="data/sar_eo", metavar="PATH",
-                   help="Destination for train/val/test PNG files (default: data/sar_eo)")
+    p.add_argument(
+        "--s1-dir",
+        required=True,
+        metavar="PATH",
+        help="Root directory containing Sentinel-1 GeoTIFFs",
+    )
+    p.add_argument(
+        "--s2-dir",
+        required=True,
+        metavar="PATH",
+        help="Root directory containing Sentinel-2 GeoTIFFs",
+    )
+    p.add_argument(
+        "--output-dir",
+        default="data/sar_eo",
+        metavar="PATH",
+        help="Destination for train/val/test PNG files (default: data/sar_eo)",
+    )
 
     # SAR options
     sar = p.add_argument_group("SAR (Sentinel-1) options")
-    sar.add_argument("--sar-channels", type=int, default=1, choices=[1, 3],
-                     help="1 = VV only (grayscale); 3 = VV/VH/VV stacked (default: 1)")
-    sar.add_argument("--sar-min-db", type=float, default=-25.0,
-                     help="Lower dB clip value — pixels below this → 0 (default: -25)")
-    sar.add_argument("--sar-max-db", type=float, default=0.0,
-                     help="Upper dB clip value — pixels above this → 255 (default: 0)")
-    sar.add_argument("--sar-already-db", action="store_true",
-                     help="Skip linear→dB conversion (use if data is already in dB, e.g. SEN12MS)")
+    sar.add_argument(
+        "--sar-channels",
+        type=int,
+        default=1,
+        choices=[1, 3],
+        help="1 = VV only (grayscale); 3 = VV/VH/VV stacked (default: 1)",
+    )
+    sar.add_argument(
+        "--sar-min-db",
+        type=float,
+        default=-25.0,
+        help="Lower dB clip value — pixels below this → 0 (default: -25)",
+    )
+    sar.add_argument(
+        "--sar-max-db",
+        type=float,
+        default=0.0,
+        help="Upper dB clip value — pixels above this → 255 (default: 0)",
+    )
+    sar.add_argument(
+        "--sar-already-db",
+        action="store_true",
+        help="Skip linear→dB conversion (use if data is already in dB, e.g. SEN12MS)",
+    )
 
     # EO options
     eo = p.add_argument_group("EO (Sentinel-2) options")
-    eo.add_argument("--s2-scale", type=float, default=10_000.0,
-                    help="Divide raw uint16 values by this to get physical"
-                         " reflectance (default: 10000)")
-    eo.add_argument("--refl-cap", type=float, default=0.3,
-                    help="Clip reflectance at this value before uint8 scaling (default: 0.3)")
-    eo.add_argument("--s2-standard-order", action="store_true",
-                    help="Use standard ESA band order (B01 first) instead of"
-                         " SEN12MS order (B02 first)")
+    eo.add_argument(
+        "--s2-scale",
+        type=float,
+        default=10_000.0,
+        help="Divide raw uint16 values by this to get physical" " reflectance (default: 10000)",
+    )
+    eo.add_argument(
+        "--refl-cap",
+        type=float,
+        default=0.3,
+        help="Clip reflectance at this value before uint8 scaling (default: 0.3)",
+    )
+    eo.add_argument(
+        "--s2-standard-order",
+        action="store_true",
+        help="Use standard ESA band order (B01 first) instead of" " SEN12MS order (B02 first)",
+    )
 
     # Patch / scene options
     patch = p.add_argument_group("Patch extraction options (scenes mode)")
-    patch.add_argument("--image-size", type=int, default=256,
-                       help="Output patch size in pixels (default: 256)")
-    patch.add_argument("--stride", type=int, default=None,
-                       help="Sliding window stride (default: image-size, i.e. no overlap)")
-    patch.add_argument("--min-valid-fraction", type=float, default=0.8,
-                       help="Minimum fraction of finite, non-zero pixels"
-                            " for a patch to be kept (default: 0.8)")
+    patch.add_argument(
+        "--image-size", type=int, default=256, help="Output patch size in pixels (default: 256)"
+    )
+    patch.add_argument(
+        "--stride",
+        type=int,
+        default=None,
+        help="Sliding window stride (default: image-size, i.e. no overlap)",
+    )
+    patch.add_argument(
+        "--min-valid-fraction",
+        type=float,
+        default=0.8,
+        help="Minimum fraction of finite, non-zero pixels" " for a patch to be kept (default: 0.8)",
+    )
 
     # Split options
     split = p.add_argument_group("Train/val/test split")
-    split.add_argument("--val-split", type=float, default=0.1,
-                       help="Fraction of patches for validation (default: 0.1)")
-    split.add_argument("--test-split", type=float, default=0.1,
-                       help="Fraction of patches for test (default: 0.1)")
-    split.add_argument("--seed", type=int, default=42,
-                       help="Random seed for reproducible splits (default: 42)")
+    split.add_argument(
+        "--val-split",
+        type=float,
+        default=0.1,
+        help="Fraction of patches for validation (default: 0.1)",
+    )
+    split.add_argument(
+        "--test-split", type=float, default=0.1, help="Fraction of patches for test (default: 0.1)"
+    )
+    split.add_argument(
+        "--seed", type=int, default=42, help="Random seed for reproducible splits (default: 42)"
+    )
 
     return p
 
@@ -451,8 +509,12 @@ def main() -> None:
     args = parser.parse_args()
 
     logger.remove()
-    logger.add(sys.stderr, level="INFO", colorize=True,
-               format="<green>{time:HH:mm:ss}</green> | <level>{level}</level> | {message}")
+    logger.add(
+        sys.stderr,
+        level="INFO",
+        colorize=True,
+        format="<green>{time:HH:mm:ss}</green> | <level>{level}</level> | {message}",
+    )
 
     if args.mode == "sen12ms":
         process_sen12ms(args)

@@ -49,7 +49,8 @@ class Pix2PixTrainer:
         _vgg_weights_path: str | None = cfg.training.get("vgg_weights_path", None)
         self.vgg_loss: VGGPerceptualLoss | None = (
             VGGPerceptualLoss(weights_path=_vgg_weights_path).to(device)
-            if self.lambda_vgg > 0 else None
+            if self.lambda_vgg > 0
+            else None
         )
         self.lambda_fm: float = float(cfg.training.get("lambda_fm", 0.0))
 
@@ -92,7 +93,7 @@ class Pix2PixTrainer:
         real_pair = torch.cat([sar, eo], dim=1)
         fake_pair = torch.cat([sar, fake_eo.detach()], dim=1)
 
-        real_maps = self.discriminator(real_pair)   # list[Tensor]
+        real_maps = self.discriminator(real_pair)  # list[Tensor]
         fake_maps = self.discriminator(fake_pair)
 
         d_loss = multiscale_discriminator_loss(real_maps, fake_maps, self.loss_type)
@@ -145,11 +146,13 @@ class Pix2PixTrainer:
             return t.expand(-1, 3, -1, -1) if t.shape[1] == 1 else t
 
         n = min(8, self.fixed_sar.size(0))
-        rows = torch.cat([
-            _to_3ch(self.fixed_sar[:n]),
-            _to_3ch(fake_eo[:n]),
-            _to_3ch(self.fixed_eo[:n]),
-        ])
+        rows = torch.cat(
+            [
+                _to_3ch(self.fixed_sar[:n]),
+                _to_3ch(fake_eo[:n]),
+                _to_3ch(self.fixed_eo[:n]),
+            ]
+        )
         save_image(
             make_grid((rows + 1) / 2, nrow=n),
             self.output_dir / "samples" / f"epoch_{epoch:04d}.png",
@@ -160,17 +163,19 @@ class Pix2PixTrainer:
         mlflow.set_experiment(self.cfg.experiment_name)
 
         with mlflow.start_run():
-            mlflow.log_params({
-                "model": self.cfg.model.name,
-                "loss_type": self.cfg.training.loss_type,
-                "lambda_l1": self.lambda_l1,
-                "lambda_vgg": self.lambda_vgg,
-                "lambda_fm": self.lambda_fm,
-                "n_scales": n_scales,
-                "lr_g": self.cfg.training.lr_generator,
-                "lr_d": self.cfg.training.lr_discriminator,
-                "batch_size": self.cfg.training.batch_size,
-            })
+            mlflow.log_params(
+                {
+                    "model": self.cfg.model.name,
+                    "loss_type": self.cfg.training.loss_type,
+                    "lambda_l1": self.lambda_l1,
+                    "lambda_vgg": self.lambda_vgg,
+                    "lambda_fm": self.lambda_fm,
+                    "n_scales": n_scales,
+                    "lr_g": self.cfg.training.lr_generator,
+                    "lr_d": self.cfg.training.lr_discriminator,
+                    "batch_size": self.cfg.training.batch_size,
+                }
+            )
 
             for epoch in range(self.start_epoch, self.cfg.training.epochs):
                 self.generator.train()

@@ -15,8 +15,13 @@ def test_save_load_checkpoint(tmp_path: Path) -> None:
 
     ckpt = tmp_path / "ckpt.pt"
     save_checkpoint(
-        ckpt, epoch=5, generator=g, discriminator=d,
-        opt_g=opt_g, opt_d=opt_d, metrics={"d_loss": 0.5, "g_loss": 0.6},
+        ckpt,
+        epoch=5,
+        generator=g,
+        discriminator=d,
+        opt_g=opt_g,
+        opt_d=opt_d,
+        metrics={"d_loss": 0.5, "g_loss": 0.6},
     )
 
     state = load_checkpoint(ckpt, torch.device("cpu"))

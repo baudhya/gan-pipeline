@@ -21,6 +21,7 @@ import numpy as np
 # SAR utilities
 # ---------------------------------------------------------------------------
 
+
 def linear_to_db(arr: np.ndarray, eps: float = 1e-10) -> np.ndarray:
     """Convert linear power (intensity) to dB. Safe against zeros."""
     return 10.0 * np.log10(np.maximum(arr, eps))
@@ -43,7 +44,7 @@ def normalize_sar(
     """
     db = arr if already_db else linear_to_db(arr)
     clipped = np.clip(db, min_db, max_db)
-    normalized = (clipped - min_db) / (max_db - min_db)   # [0, 1]
+    normalized = (clipped - min_db) / (max_db - min_db)  # [0, 1]
     return (normalized * 255).astype(np.uint8)
 
 
@@ -72,14 +73,14 @@ def make_sar_image(
     vv = normalize_sar(bands[..., 0], min_db, max_db, already_db)
 
     if sar_channels == 1:
-        return vv[..., np.newaxis]    # (H, W, 1)
+        return vv[..., np.newaxis]  # (H, W, 1)
 
     # 3-channel: VV, VH, VV  (common visualization for Sentinel-1)
     if bands.shape[-1] >= 2:
         vh = normalize_sar(bands[..., 1], min_db, max_db, already_db)
     else:
         vh = vv
-    return np.stack([vv, vh, vv], axis=-1)   # (H, W, 3)
+    return np.stack([vv, vh, vv], axis=-1)  # (H, W, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -89,8 +90,8 @@ def make_sar_image(
 # Default RGB band indices within a standard Sentinel-2 13-band stack
 # Band order in SEN12MS: B02, B03, B04, B05, B06, B07, B08, B8A, B09, B10, B11, B12, B01
 # RGB = B04 (index 2), B03 (index 1), B02 (index 0)  →  natural colour
-S2_RGB_INDICES_SEN12MS = (2, 1, 0)    # B04, B03, B02 in SEN12MS band order
-S2_RGB_INDICES_STANDARD = (3, 2, 1)   # B04, B03, B02 in standard ESA order (B01 first)
+S2_RGB_INDICES_SEN12MS = (2, 1, 0)  # B04, B03, B02 in SEN12MS band order
+S2_RGB_INDICES_STANDARD = (3, 2, 1)  # B04, B03, B02 in standard ESA order (B01 first)
 
 
 def normalize_eo(
@@ -129,18 +130,18 @@ def make_eo_image(
         reflectance_cap:   Upper clip for reflectance before uint8 conversion.
     """
     if bands.ndim == 3 and bands.shape[0] <= 13:
-        bands = np.transpose(bands, (1, 2, 0))   # (H, W, C)
+        bands = np.transpose(bands, (1, 2, 0))  # (H, W, C)
 
     channels = [
-        normalize_eo(bands[..., i], reflectance_scale, reflectance_cap)
-        for i in rgb_indices
+        normalize_eo(bands[..., i], reflectance_scale, reflectance_cap) for i in rgb_indices
     ]
-    return np.stack(channels, axis=-1)   # (H, W, 3)
+    return np.stack(channels, axis=-1)  # (H, W, 3)
 
 
 # ---------------------------------------------------------------------------
 # Patch quality checks
 # ---------------------------------------------------------------------------
+
 
 def is_valid_patch(arr: np.ndarray, min_valid_fraction: float = 0.8) -> bool:
     """
@@ -155,6 +156,7 @@ def is_valid_patch(arr: np.ndarray, min_valid_fraction: float = 0.8) -> bool:
 # ---------------------------------------------------------------------------
 # Side-by-side assembly
 # ---------------------------------------------------------------------------
+
 
 def make_side_by_side(sar_img: np.ndarray, eo_img: np.ndarray) -> np.ndarray:
     """
@@ -181,4 +183,4 @@ def make_side_by_side(sar_img: np.ndarray, eo_img: np.ndarray) -> np.ndarray:
     if eo_img.ndim == 2:
         eo_img = np.stack([eo_img] * 3, axis=-1)
 
-    return np.concatenate([sar_img, eo_img], axis=1)   # (H, 2W, 3)
+    return np.concatenate([sar_img, eo_img], axis=1)  # (H, 2W, 3)

@@ -26,10 +26,12 @@ class MultiScaleDiscriminator(nn.Module):
         spectral_norm: bool = False,
     ) -> None:
         super().__init__()
-        self.discriminators = nn.ModuleList([
-            PatchGANDiscriminator(sar_channels, eo_channels, base_features, spectral_norm)
-            for _ in range(n_scales)
-        ])
+        self.discriminators = nn.ModuleList(
+            [
+                PatchGANDiscriminator(sar_channels, eo_channels, base_features, spectral_norm)
+                for _ in range(n_scales)
+            ]
+        )
         # Smooth downsampling between scales; count_include_pad=False avoids border artifacts
         self.downsample = nn.AvgPool2d(kernel_size=3, stride=2, padding=1, count_include_pad=False)
 

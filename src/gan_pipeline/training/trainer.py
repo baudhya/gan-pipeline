@@ -104,14 +104,16 @@ class GANTrainer:
         mlflow.set_experiment(self.cfg.experiment_name)
 
         with mlflow.start_run():
-            mlflow.log_params({
-                "model": self.cfg.model.name,
-                "latent_dim": self.cfg.model.latent_dim,
-                "loss_type": self.cfg.training.loss_type,
-                "lr_g": self.cfg.training.lr_generator,
-                "lr_d": self.cfg.training.lr_discriminator,
-                "batch_size": self.cfg.training.batch_size,
-            })
+            mlflow.log_params(
+                {
+                    "model": self.cfg.model.name,
+                    "latent_dim": self.cfg.model.latent_dim,
+                    "loss_type": self.cfg.training.loss_type,
+                    "lr_g": self.cfg.training.lr_generator,
+                    "lr_d": self.cfg.training.lr_discriminator,
+                    "batch_size": self.cfg.training.batch_size,
+                }
+            )
 
             for epoch in range(self.start_epoch, self.cfg.training.epochs):
                 self.generator.train()

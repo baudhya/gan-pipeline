@@ -37,11 +37,11 @@ class PatchGANDiscriminator(BaseDiscriminator):
         in_ch = sar_channels + eo_channels
 
         self.net = nn.Sequential(
-            _patch_block(in_ch, bf, stride=2, bn=False),        # 256→128
-            _patch_block(bf, bf * 2, stride=2),                 # 128→64
-            _patch_block(bf * 2, bf * 4, stride=2),             # 64→32
+            _patch_block(in_ch, bf, stride=2, bn=False),  # 256→128
+            _patch_block(bf, bf * 2, stride=2),  # 128→64
+            _patch_block(bf * 2, bf * 4, stride=2),  # 64→32
             _patch_block(bf * 4, bf * 8, stride=1),  # 32→31 (stride=1, no downsampling)
-            nn.Conv2d(bf * 8, 1, 4, 1, 1),                      # 31→30 (raw logits)
+            nn.Conv2d(bf * 8, 1, 4, 1, 1),  # 31→30 (raw logits)
         )
 
         self._init_weights()
@@ -65,9 +65,7 @@ class PatchGANDiscriminator(BaseDiscriminator):
         """x: pre-concatenated (sar, eo) tensor of shape (B, sar_ch+eo_ch, H, W)."""
         return self.net(x)
 
-    def forward_with_features(
-        self, x: torch.Tensor
-    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    def forward_with_features(self, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """Run the network and return (logit_map, [intermediate_feature, ...]).
 
         Features are the outputs after each conv block (all layers except the

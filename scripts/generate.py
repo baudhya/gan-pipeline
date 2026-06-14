@@ -1,4 +1,5 @@
 """Generate a grid of images from a trained checkpoint."""
+
 from pathlib import Path
 
 import hydra
