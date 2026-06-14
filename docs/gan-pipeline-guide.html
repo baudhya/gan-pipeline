@@ -411,6 +411,9 @@
 
   <div class="toc-section"><a href="#ch23"><span class="toc-num">23</span><span class="toc-title">Managing pyproject.toml from the Command Line</span></a></div>
   <div class="toc-sub"><a href="#ch23">uv (recommended), Poetry, pip-tools — initialise, add, remove, upgrade dependencies without editing TOML by hand</a></div>
+
+  <div class="toc-section"><a href="#ch24"><span class="toc-num">24</span><span class="toc-title">Managing CI/CD from the Command Line</span></a></div>
+  <div class="toc-sub"><a href="#ch24">gh CLI, act (local runs), pre-commit CLI, secrets, workflow triggers — full CI/CD control without the GitHub UI</a></div>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════ CH1 -->
@@ -2837,6 +2840,386 @@ uv add --optional geo albumentations
     <strong>Recommendation for this project</strong>
     Use <strong>uv</strong> for all new dependency management. It is the fastest tool available, reads the existing <code>pyproject.toml</code> without any changes, and replaces both <code>python -m venv</code> and <code>pip install</code> with a single <code>uv sync</code> command. The rest of the project (Makefile, CI, pre-commit) works unchanged.
   </div>
+
+  <div class="footer-note">
+    SAR→EO GAN Pipeline — Complete Developer Guide · June 2026 · github.com/baudhya/gan-pipeline
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ CH24 -->
+<div class="chapter" id="ch24">
+  <div class="chapter-header">
+    <div class="chapter-num">24</div>
+    <div class="chapter-title">
+      <div class="chapter-label">Chapter Twenty-Four</div>
+      <h1>Managing CI/CD from the Command Line</h1>
+    </div>
+  </div>
+
+  <div class="box box-info">
+    <strong>The Goal</strong>
+    Every CI/CD action — trigger a workflow, check run status, view logs, manage secrets, test workflows locally — can be done from the terminal without opening a browser. This chapter covers the three tools that make this possible: the <strong>GitHub CLI (<code>gh</code>)</strong>, <strong><code>act</code></strong> (local Actions runner), and the <strong>pre-commit CLI</strong>.
+  </div>
+
+  <h2>24.1 GitHub CLI — <code>gh</code></h2>
+
+  <p><code>gh</code> is GitHub's official command-line interface. It communicates directly with the GitHub API, so every action you would take in the web UI can be scripted.</p>
+
+  <h3>Install</h3>
+<pre># Ubuntu / Debian
+sudo apt install gh
+
+# macOS
+brew install gh
+
+# Windows (winget)
+winget install GitHub.cli
+
+# Authenticate (one-time)
+gh auth login        # prompts: GitHub.com → HTTPS → browser/token</pre>
+
+  <h3>View workflow runs</h3>
+<pre># List the most recent runs across all workflows
+gh run list
+
+# Filter by workflow file
+gh run list --workflow pre-commit.yml
+gh run list --workflow pytest.yml
+
+# Show status of a specific run (replace with run ID from list)
+gh run view 12345678
+
+# Watch a run in real time (streams logs until completion)
+gh run watch 12345678</pre>
+
+  <h3>View logs</h3>
+<pre># Full logs for a run
+gh run view 12345678 --log
+
+# Only failed step logs
+gh run view 12345678 --log-failed</pre>
+
+  <h3>Trigger a workflow manually</h3>
+<pre># Run a workflow on demand (requires workflow_dispatch trigger in the YAML)
+gh workflow run pre-commit.yml
+gh workflow run pytest.yml --ref master
+
+# Pass inputs to a parametrised workflow
+gh workflow run train.yml --field epochs=50 --field loss_type=hinge</pre>
+
+  <p>To enable manual triggering, add <code>workflow_dispatch:</code> to your workflow YAML:</p>
+<pre>on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:          # ← adds "Run workflow" button + gh workflow run support
+    inputs:
+      epochs:
+        description: Number of training epochs
+        default: "10"</pre>
+
+  <h3>Re-run a failed workflow</h3>
+<pre># Re-run all jobs in a failed run
+gh run rerun 12345678
+
+# Re-run only failed jobs (skips passing jobs — faster)
+gh run rerun 12345678 --failed</pre>
+
+  <h3>Download workflow artifacts</h3>
+<pre># List artifacts produced by a run
+gh run download 12345678 --dry-run
+
+# Download all artifacts into ./artifacts/
+gh run download 12345678 --dir artifacts/
+
+# Download a specific named artifact
+gh run download 12345678 --name coverage-report</pre>
+
+  <h3>Manage secrets from the CLI</h3>
+<pre># Set a repository secret (prompts for value securely)
+gh secret set WANDB_API_KEY
+gh secret set HF_TOKEN --body "hf_abc123xyz"
+
+# List secrets (names only — values are never shown)
+gh secret list
+
+# Delete a secret
+gh secret delete WANDB_API_KEY</pre>
+
+  <div class="box box-tip">
+    <strong>Secrets in this project</strong>
+    This project currently needs no secrets for CI — tests run on CPU with synthetic data. If you add cloud storage (S3, GCS) or experiment tracking (W&B), add the keys with <code>gh secret set</code> and reference them in the workflow YAML as <code>${{ secrets.KEY_NAME }}</code>.
+  </div>
+
+  <h3>Manage workflow files</h3>
+<pre># List all workflows in the repo
+gh workflow list
+
+# Disable a workflow (stops it from triggering)
+gh workflow disable pytest.yml
+
+# Re-enable it
+gh workflow enable pytest.yml
+
+# View the YAML of a workflow without opening the file
+gh workflow view pre-commit.yml</pre>
+
+  <h3>Open the run in a browser (when you need the visual diff)</h3>
+<pre>gh run view 12345678 --web     # opens in browser
+gh repo view --web             # open the repo home page</pre>
+
+  <h2>24.2 act — Run GitHub Actions Locally</h2>
+
+  <p><code>act</code> is an open-source tool that runs GitHub Actions workflows on your machine using Docker. It lets you test workflow changes without pushing to GitHub and waiting for a runner.</p>
+
+  <h3>Install act</h3>
+<pre># macOS
+brew install act
+
+# Linux (via release binary)
+curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
+
+# or via Go
+go install github.com/nektos/act@latest</pre>
+
+  <p><code>act</code> requires Docker to be running. It pulls GitHub-runner-compatible Docker images on first use.</p>
+
+  <h3>Run all workflows locally</h3>
+<pre># Simulate a push event (what runs on git push)
+act push
+
+# Simulate a pull_request event
+act pull_request
+
+# Run a specific workflow
+act push --workflows .github/workflows/pytest.yml
+
+# Run a specific job inside a workflow
+act push --job run-tests</pre>
+
+  <h3>Choose the runner image</h3>
+<pre># Micro image — fast but minimal (good for pure-Python, no Docker-in-Docker)
+act push -P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# Full image — matches GitHub's hosted runner (large, ~18 GB)
+act push -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:full-latest</pre>
+
+  <p>For this project the micro image is sufficient — all CI needs is Python and pip.</p>
+
+  <h3>Pass secrets to act</h3>
+<pre># Inline
+act push --secret WANDB_API_KEY=abc123
+
+# From a file (one KEY=value per line, like .env)
+act push --secret-file .secrets</pre>
+
+  <h3>Dry run — see what would execute without running</h3>
+<pre>act push --dryrun</pre>
+
+  <h3>Typical act workflow for this project</h3>
+<pre># 1. Edit a workflow file
+vim .github/workflows/pytest.yml
+
+# 2. Test it locally before pushing
+act push --workflows .github/workflows/pytest.yml -P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# 3. If it passes locally, push
+git add .github/workflows/pytest.yml
+git commit -m "Update pytest workflow"
+git push</pre>
+
+  <div class="box box-warn">
+    <strong>act limitations</strong>
+    <ul>
+      <li>Services (Postgres, Redis) defined under <code>services:</code> may not start correctly in all images</li>
+      <li>Actions that use <code>GITHUB_TOKEN</code> for write operations (create release, deploy) need <code>--actor</code> and a real token</li>
+      <li>GPU runners are not available locally through act — skip GPU-dependent jobs with an <code>if:</code> condition during local testing</li>
+    </ul>
+  </div>
+
+  <h2>24.3 Pre-commit CLI — Full Control Over Hooks</h2>
+
+  <p>Pre-commit has a rich CLI beyond <code>pre-commit install</code>. You can run individual hooks, update hook versions, and audit what hooks are configured — all without committing.</p>
+
+  <h3>Run all hooks against all files</h3>
+<pre>pre-commit run --all-files</pre>
+
+  <h3>Run a specific hook only</h3>
+<pre>pre-commit run ruff --all-files
+pre-commit run black --all-files
+pre-commit run mypy --all-files
+pre-commit run pytest --all-files</pre>
+
+  <h3>Run hooks against staged files only (same as what git commit triggers)</h3>
+<pre>pre-commit run</pre>
+
+  <h3>Update hook versions to latest</h3>
+<pre># Update all hooks to their latest tagged versions
+pre-commit autoupdate
+
+# The .pre-commit-config.yaml rev: fields are rewritten automatically
+# Review the diff, then commit:
+git diff .pre-commit-config.yaml
+git add .pre-commit-config.yaml
+git commit -m "Update pre-commit hook versions"</pre>
+
+  <h3>Show installed hooks and their status</h3>
+<pre>pre-commit run --show-diff-on-failure --all-files</pre>
+
+  <h3>Clean the pre-commit cache (if hooks behave strangely)</h3>
+<pre>pre-commit clean         # removes cached hook environments
+pre-commit run --all-files  # re-installs and runs</pre>
+
+  <h3>Temporarily skip a specific hook</h3>
+<pre># Skip one hook by its id
+SKIP=mypy git commit -m "wip: skip typecheck this once"
+
+# Skip multiple hooks
+SKIP=mypy,pytest git commit -m "wip: skip slow checks"</pre>
+
+  <div class="box box-warn">
+    <strong>Project policy</strong>
+    <code>--no-verify</code> skips ALL hooks and is forbidden by this project's <code>/commit</code> skill. Use <code>SKIP=hook-id</code> when you genuinely need to bypass one hook — it is explicit and auditable.
+  </div>
+
+  <h3>Uninstall / reinstall hooks</h3>
+<pre>pre-commit uninstall      # removes the git hook scripts
+pre-commit install        # reinstalls them from .pre-commit-config.yaml</pre>
+
+  <h2>24.4 Workflow configuration reference for this project</h2>
+
+  <p>The two workflow files live in <code>.github/workflows/</code>. Here is what each flag does:</p>
+
+<pre># .github/workflows/pre-commit.yml
+name: pre-commit
+on:
+  push:
+    branches: [master]       # runs on every push to master
+  pull_request:
+    branches: [master]       # runs on every PR targeting master
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"      # pins the Python version
+          cache: pip                  # caches pip downloads between runs
+      - name: Install deps
+        run: pip install -e ".[dev]"  # installs the package + dev extras
+      - name: Run pre-commit
+        run: pre-commit run --all-files  # runs all 5 hooks</pre>
+
+<pre># .github/workflows/pytest.yml
+name: pytest
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install deps
+        run: pip install -e ".[dev]"
+      - name: Run tests
+        run: pytest --no-header -q    # same flags as the pre-commit hook</pre>
+
+  <h3>Add a caching layer for faster runs</h3>
+<pre>      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-</pre>
+  <p>Insert this step before <code>Install deps</code>. The cache key changes whenever <code>pyproject.toml</code> changes, so stale environments are never reused.</p>
+
+  <h3>Add a test matrix (test multiple Python versions)</h3>
+<pre>jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}</pre>
+
+  <h2>24.5 Quick-reference command card</h2>
+
+  <table>
+    <tr>
+      <th>Task</th>
+      <th>Command</th>
+    </tr>
+    <tr>
+      <td>See recent CI runs</td>
+      <td><code>gh run list</code></td>
+    </tr>
+    <tr>
+      <td>Watch a run live</td>
+      <td><code>gh run watch &lt;id&gt;</code></td>
+    </tr>
+    <tr>
+      <td>View failed logs</td>
+      <td><code>gh run view &lt;id&gt; --log-failed</code></td>
+    </tr>
+    <tr>
+      <td>Re-run only failed jobs</td>
+      <td><code>gh run rerun &lt;id&gt; --failed</code></td>
+    </tr>
+    <tr>
+      <td>Trigger workflow manually</td>
+      <td><code>gh workflow run pytest.yml</code></td>
+    </tr>
+    <tr>
+      <td>Set a secret</td>
+      <td><code>gh secret set KEY_NAME</code></td>
+    </tr>
+    <tr>
+      <td>Test workflow locally</td>
+      <td><code>act push --workflows .github/workflows/pytest.yml</code></td>
+    </tr>
+    <tr>
+      <td>Run all pre-commit hooks</td>
+      <td><code>pre-commit run --all-files</code></td>
+    </tr>
+    <tr>
+      <td>Run one hook only</td>
+      <td><code>pre-commit run mypy --all-files</code></td>
+    </tr>
+    <tr>
+      <td>Skip one hook on commit</td>
+      <td><code>SKIP=mypy git commit -m "..."</code></td>
+    </tr>
+    <tr>
+      <td>Update hook versions</td>
+      <td><code>pre-commit autoupdate</code></td>
+    </tr>
+    <tr>
+      <td>Download CI artifacts</td>
+      <td><code>gh run download &lt;id&gt; --dir artifacts/</code></td>
+    </tr>
+    <tr>
+      <td>Disable a workflow</td>
+      <td><code>gh workflow disable pytest.yml</code></td>
+    </tr>
+    <tr>
+      <td>Open run in browser</td>
+      <td><code>gh run view &lt;id&gt; --web</code></td>
+    </tr>
+  </table>
 
   <div class="footer-note">
     SAR→EO GAN Pipeline — Complete Developer Guide · June 2026 · github.com/baudhya/gan-pipeline
