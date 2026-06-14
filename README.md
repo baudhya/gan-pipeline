@@ -251,17 +251,17 @@ The VGG network is frozen (`requires_grad=False`) and moved to the training devi
 
 Setting `lambda_vgg: 0.0` disables the loss entirely without instantiating the VGG network — useful for CI or low-memory environments.
 
-**Offline / air-gapped use:** by default, VGG16 weights are downloaded from PyTorch Hub on first use. The repo ships a `weights/` directory and a download script so you can populate it once and reuse the file across runs without hitting the network:
+**Offline / air-gapped use:** the config defaults to `weights/vgg16-397923af.pth`. Run the download script once after cloning and training will never hit the network for VGG weights:
 
 ```bash
-# Download once (~528 MB) into weights/vgg16-397923af.pth
-make download-weights
-
-# Then point the config at the local file
-python scripts/train_pix2pix.py training.vgg_weights_path=weights/vgg16-397923af.pth
+make download-weights   # ~528 MB, one-time setup
 ```
 
-The `weights/` directory is tracked by git (via `.gitkeep`) but the `.pth` file itself is excluded by `.gitignore` — copy it manually to air-gapped machines. When `vgg_weights_path` is set, the file is loaded with `torch.load(..., weights_only=True)`; no network access is required. A clear error is raised if the path does not exist. Leave `vgg_weights_path` as `null` (the default) to use the standard online download behaviour.
+The `weights/` directory is tracked by git (via `.gitkeep`) but the `.pth` file itself is excluded by `.gitignore` — copy it manually to air-gapped machines. When `vgg_weights_path` is set, the file is loaded with `torch.load(..., weights_only=True)`; a clear error is raised if the path does not exist. To fall back to the PyTorch Hub auto-download, set `vgg_weights_path: null` in the config or pass it as a CLI override:
+
+```bash
+python scripts/train_pix2pix.py training.vgg_weights_path=null
+```
 
 #### Feature Matching Loss
 
@@ -892,7 +892,7 @@ python scripts/train.py model=dcgan training=default data=celeba
 | `training.loss_type` | `hinge` | Loss function: `hinge`, `bce`, or `wasserstein` |
 | `training.lambda_l1` | `100.0` | Weight of pixel-level L1 loss term |
 | `training.lambda_vgg` | `10.0` | Weight of VGG perceptual loss; set to `0.0` to disable |
-| `training.vgg_weights_path` | `null` | Local path to `vgg16-*.pth` for offline use; `null` = download on first run |
+| `training.vgg_weights_path` | `weights/vgg16-397923af.pth` | Local path to VGG16 weights; run `make download-weights` once to populate; `null` = download on first run |
 | `training.lambda_fm` | `10.0` | Weight of feature matching loss; set to `0.0` to disable |
 | `training.save_every` | `10` | Save checkpoint every N epochs |
 | `training.sample_every` | `5` | Save sample grid every N epochs |
