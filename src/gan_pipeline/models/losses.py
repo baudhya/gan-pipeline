@@ -95,11 +95,15 @@ class VGGPerceptualLoss(nn.Module):
         super().__init__()
         vgg = torchvision.models.vgg16(weights=None)
         if weights_path is not None:
-            # Offline / air-gapped: load from a local .pth file.
-            # Pre-download:
-            #   python -c "import torchvision; torchvision.models.vgg16(weights='IMAGENET1K_V1')"
-            # then copy ~/.cache/torch/hub/checkpoints/vgg16-397923af.pth to the target machine.
-            state = torch.load(weights_path, map_location="cpu", weights_only=True)
+            from pathlib import Path
+
+            wpath = Path(weights_path)
+            if not wpath.exists():
+                raise FileNotFoundError(
+                    f"VGG weights not found at '{weights_path}'. "
+                    "Run `make download-weights` to fetch them into weights/."
+                )
+            state = torch.load(str(wpath), map_location="cpu", weights_only=True)
             vgg.load_state_dict(state)
         else:
             vgg = torchvision.models.vgg16(weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1)

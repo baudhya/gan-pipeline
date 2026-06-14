@@ -15,6 +15,7 @@ mlruns/
 /data/
 *.pt
 *.pth
+!weights/.gitkeep
 
 # Tools
 .mypy_cache/

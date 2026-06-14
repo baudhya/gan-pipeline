@@ -251,20 +251,17 @@ The VGG network is frozen (`requires_grad=False`) and moved to the training devi
 
 Setting `lambda_vgg: 0.0` disables the loss entirely without instantiating the VGG network — useful for CI or low-memory environments.
 
-**Offline / air-gapped use:** by default, VGG16 weights are downloaded from PyTorch Hub on first use and cached at `~/.cache/torch/hub/checkpoints/vgg16-397923af.pth`. On machines without internet access, pre-download the file on a connected machine and point the config at it:
+**Offline / air-gapped use:** by default, VGG16 weights are downloaded from PyTorch Hub on first use. The repo ships a `weights/` directory and a download script so you can populate it once and reuse the file across runs without hitting the network:
 
 ```bash
-# On a machine with internet — download and locate the cache file
-python -c "import torchvision; torchvision.models.vgg16(weights='IMAGENET1K_V1')"
-# → ~/.cache/torch/hub/checkpoints/vgg16-397923af.pth
+# Download once (~528 MB) into weights/vgg16-397923af.pth
+make download-weights
 
-# Copy to the air-gapped machine, then set in config:
-#   training.vgg_weights_path: /path/to/vgg16-397923af.pth
-# or pass as a CLI override:
-python scripts/train_pix2pix.py training.vgg_weights_path=/path/to/vgg16-397923af.pth
+# Then point the config at the local file
+python scripts/train_pix2pix.py training.vgg_weights_path=weights/vgg16-397923af.pth
 ```
 
-When `vgg_weights_path` is set, the file is loaded with `torch.load(..., weights_only=True)`; no network access is required. Leave it as `null` (the default) for the standard online behaviour.
+The `weights/` directory is tracked by git (via `.gitkeep`) but the `.pth` file itself is excluded by `.gitignore` — copy it manually to air-gapped machines. When `vgg_weights_path` is set, the file is loaded with `torch.load(..., weights_only=True)`; no network access is required. A clear error is raised if the path does not exist. Leave `vgg_weights_path` as `null` (the default) to use the standard online download behaviour.
 
 #### Feature Matching Loss
 
@@ -1158,15 +1155,16 @@ pytest --cov=gan_pipeline --cov-report=term-missing
 ### Makefile shortcuts
 
 ```bash
-make install        # pip install -e ".[dev]"
-make test           # pytest
-make lint           # ruff + black --check + isort --check
-make format         # black + isort + ruff --fix (in-place)
-make typecheck      # mypy src/
-make prepare-data   # python scripts/prepare_data.py (sen12ms mode, edit paths first)
-make train          # python scripts/train_pix2pix.py
-make train-dcgan    # python scripts/train.py model=dcgan ...
-make clean          # remove __pycache__, .pytest_cache, .mypy_cache, egg-info
+make install           # pip install -e ".[dev]"
+make test              # pytest
+make lint              # ruff + black --check + isort --check
+make format            # black + isort + ruff --fix (in-place)
+make typecheck         # mypy src/
+make download-weights  # download VGG16 weights into weights/ (~528 MB, run once)
+make prepare-data      # python scripts/prepare_data.py (sen12ms mode, edit paths first)
+make train             # python scripts/train_pix2pix.py
+make train-dcgan       # python scripts/train.py model=dcgan ...
+make clean             # remove __pycache__, .pytest_cache, .mypy_cache, egg-info
 ```
 
 **Pre-commit:**

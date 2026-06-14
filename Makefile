@@ -1,4 +1,4 @@
-.PHONY: install lint format typecheck test train generate clean
+.PHONY: install lint format typecheck test train generate download-weights clean
 
 install:
 	pip install -e ".[dev]"
@@ -27,6 +27,9 @@ prepare-data:
 	  --output-dir data/sar_eo \
 	  --sar-already-db \
 	  --sar-channels 1
+
+download-weights:
+	python scripts/download_vgg_weights.py
 
 train:
 	python scripts/train_pix2pix.py
