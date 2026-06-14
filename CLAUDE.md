@@ -198,6 +198,7 @@ Invoke with `/skill-name` in Claude Code. Files live in `.claude/skills/`.
 | `/eval-run` | Evaluating a checkpoint — prompts for paths, runs FID + IS |
 | `/new-model` | Adding a new architecture — checklist from file creation through tests |
 | `/prep-data` | Preparing Sentinel data — guides through `prepare_data.py` args |
+| `/commit` | Stage and commit changes — enforces conventions, runs hooks, never adds Co-Authored-By |
 
 ---
 
