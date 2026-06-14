@@ -25,6 +25,7 @@ Production-grade SAR→EO image translation pipeline built on **pix2pix** with a
    - [EO preprocessing](#eo-preprocessing)
    - [Training data formats](#training-data-formats)
    - [Data augmentation](#data-augmentation)
+   - [Sentinel-1/2 paired data with land-cover classes](#sentinel-12-paired-data-with-land-cover-classes)
 6. [Configuration System](#configuration-system)
 7. [Training](#training)
 8. [Evaluation](#evaluation)
@@ -615,6 +616,165 @@ Applied automatically during training, **synchronized** across SAR and EO so bot
 4. `Normalize(mean=0.5, std=0.5)` — maps uint8 [0, 255] → float [-1, 1]
 
 Augmentation is disabled for validation and inference (`augment=false`).
+
+---
+
+### Sentinel-1/2 paired data with land-cover classes
+
+SEN12MS ships four co-registered data streams per tile:
+
+```
+SEN12MS/
+├── s1/   ROIs<roi>_<season>_s1_<scene>/   s1_<patch>.tif   # (2, 256, 256) float32 — VV, VH already in dB
+├── s2/   ROIs<roi>_<season>_s2_<scene>/   s2_<patch>.tif   # (13, 256, 256) uint16 — all 13 S2 bands ×10000
+├── lc/   ROIs<roi>_<season>_lc_<scene>/   lc_<patch>.tif   # (1, 256, 256) uint8  — MODIS LC class per pixel
+└── dem/  ROIs<roi>_<season>_dem_<scene>/  dem_<patch>.tif  # (1, 256, 256) float32 — elevation in metres
+```
+
+Pairs are identified by matching `(roi_id, season, scene_id, patch_id)` across directories. The `lc/` band is the key resource for class-balanced training — it is not consumed by the model but used during preprocessing to label each tile with its dominant land-cover class.
+
+#### MODIS IGBP land-cover classes
+
+SEN12MS uses the MODIS MCD12Q1 product (IGBP classification scheme):
+
+| Class ID | Label | Typical SAR signature |
+|---|---|---|
+| 1–5 | Forests (needleleaf / broadleaf / mixed) | Medium–high backscatter, volume scattering |
+| 6–7 | Shrublands | Low–medium backscatter |
+| 8–9 | Savannas / woody savannas | Seasonal variation in backscatter |
+| 10 | Grasslands | Low, smooth backscatter |
+| 11 | Permanent wetlands | Double-bounce + specular; temporally variable |
+| 12 | Croplands | Strong seasonal signal — phenology visible in S1 |
+| 13 | Urban | Strong double-bounce; very high backscatter |
+| 14 | Cropland / natural mosaic | Mixed |
+| 15 | Snow and ice | Very low backscatter (specular) |
+| 16 | Barren | Low, rough-surface backscatter |
+| 17 | Water bodies | Near-zero backscatter (specular) |
+
+Classes 15 (snow), 16 (barren), and 17 (water) are often underrepresented in global datasets. The SAR→EO mapping is hardest to learn for these classes because their optical appearances differ strongly from the dominant forest/cropland majority — which is exactly when the model is most likely to hallucinate.
+
+#### Step 1 — extract LC labels during preprocessing
+
+Pass `--lc-dir` to `prepare_data.py` in `sen12ms` mode. The script reads the corresponding `lc_<patch>.tif`, computes the dominant class (mode over the 256×256 tile), and appends it to a `manifest.csv` in the output directory:
+
+```bash
+python scripts/prepare_data.py \
+  --mode sen12ms \
+  --s1-dir /data/SEN12MS/s1 \
+  --s2-dir /data/SEN12MS/s2 \
+  --lc-dir /data/SEN12MS/lc \
+  --output-dir data/sar_eo \
+  --sar-already-db \
+  --sar-channels 1 \
+  --val-split 0.1 \
+  --test-split 0.1
+```
+
+The manifest records one row per tile:
+
+```
+data/sar_eo/
+├── train/
+│   ├── 000001.png
+│   └── ...
+├── val/
+├── test/
+└── manifest.csv          ← one row per tile
+```
+
+```
+filename,split,lc_class,lc_name
+train/000001.png,train,12,Croplands
+train/000002.png,train,1,Evergreen Needleleaf Forests
+train/000003.png,train,17,Water Bodies
+...
+```
+
+#### Step 2 — class-balanced sampling with WeightedRandomSampler
+
+With the manifest in hand, replace the default `shuffle=True` DataLoader with a `WeightedRandomSampler` that upsamples rare classes:
+
+```python
+import csv
+from collections import Counter
+from torch.utils.data import WeightedRandomSampler
+from gan_pipeline.data.paired_dataset import SideBySidePairedDataset
+
+# 1. Load the manifest for the training split
+manifest_path = "data/sar_eo/manifest.csv"
+train_classes: list[int] = []
+with open(manifest_path) as f:
+    for row in csv.DictReader(f):
+        if row["split"] == "train":
+            train_classes.append(int(row["lc_class"]))
+
+# 2. Compute per-class weights (inverse frequency)
+class_counts = Counter(train_classes)
+total = sum(class_counts.values())
+class_weight = {cls: total / count for cls, count in class_counts.items()}
+
+# 3. Assign a weight to every sample
+sample_weights = [class_weight[cls] for cls in train_classes]
+
+# 4. Build the sampler — replacement=True so rare classes are oversampled
+sampler = WeightedRandomSampler(
+    weights=sample_weights,
+    num_samples=len(sample_weights),
+    replacement=True,
+)
+
+# 5. Build the dataset and DataLoader (shuffle must be False when using a sampler)
+dataset = SideBySidePairedDataset(
+    root="data/sar_eo",
+    split="train",
+    image_size=256,
+    sar_channels=1,
+    eo_channels=3,
+    augment=True,
+)
+
+from torch.utils.data import DataLoader
+loader = DataLoader(
+    dataset,
+    batch_size=1,
+    sampler=sampler,       # replaces shuffle=True
+    num_workers=4,
+    pin_memory=True,
+    drop_last=True,
+    persistent_workers=True,
+)
+```
+
+The sampler ensures that every class is seen at approximately equal frequency per epoch, preventing the model from mode-collapsing to the majority class (croplands / forests) and neglecting water, snow, and urban patches where hallucination risk is highest.
+
+#### Why this matters for SAR→EO translation
+
+The SAR→EO mapping is class-dependent:
+
+- **Forest / cropland** (≈60–70% of SEN12MS): abundant training signal; model learns reliably.
+- **Urban** (~3%): strong double-bounce SAR signature maps to a very distinct optical appearance; undersampled but learnable with balanced sampling.
+- **Water / snow** (<2%): near-specular SAR (near-zero backscatter) is consistent across many different optical scenes — the one-to-many ambiguity is worst here. Without balancing, the model rarely trains on these classes and produces blurry or wrong-colour outputs for water bodies and snow-covered terrain.
+
+Without class-balanced sampling, training metrics (FID / LPIPS) will look healthy because they are dominated by the majority classes. The failure on water and snow only becomes visible in stratified per-class evaluation — which is why the hallucination audit (Section 8.4 of the production guide) reports metrics stratified by land-cover class, not as a single aggregate.
+
+#### Verifying class balance
+
+After preparing the dataset, inspect the class distribution before training:
+
+```python
+import csv
+from collections import Counter
+
+with open("data/sar_eo/manifest.csv") as f:
+    rows = list(csv.DictReader(f))
+
+train_rows = [r for r in rows if r["split"] == "train"]
+counts = Counter(r["lc_name"] for r in train_rows)
+for name, n in sorted(counts.items(), key=lambda x: -x[1]):
+    print(f"  {n:6d}  {n/len(train_rows)*100:5.1f}%  {name}")
+```
+
+A heavily skewed distribution (e.g. Croplands at 35%, Water at 0.8%) confirms that class-balanced sampling is needed.
 
 ---
 
