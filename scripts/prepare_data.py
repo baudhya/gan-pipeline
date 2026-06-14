@@ -76,12 +76,12 @@ from PIL import Image
 from tqdm import tqdm
 
 from gan_pipeline.data.sentinel_utils import (
+    S2_RGB_INDICES_SEN12MS,
+    S2_RGB_INDICES_STANDARD,
     is_valid_patch,
     make_eo_image,
     make_sar_image,
     make_side_by_side,
-    S2_RGB_INDICES_SEN12MS,
-    S2_RGB_INDICES_STANDARD,
 )
 
 try:
@@ -112,7 +112,7 @@ def _read_geotiff(path: Path) -> np.ndarray:
     return arr
 
 
-def _read_geotiff_window(src: "rasterio.DatasetReader", window: Window) -> np.ndarray:
+def _read_geotiff_window(src: rasterio.DatasetReader, window: Window) -> np.ndarray:
     """Read a spatial window from an open rasterio dataset. Returns (C, H, W)."""
     arr = src.read(window=window).astype(np.float32)
     if src.nodata is not None:
@@ -126,7 +126,9 @@ def _save_pair(sar_img: np.ndarray, eo_img: np.ndarray, dest: Path) -> None:
     Image.fromarray(combined).save(dest)
 
 
-def _split_indices(n: int, val_split: float, test_split: float, seed: int) -> tuple[list[int], list[int], list[int]]:
+def _split_indices(
+    n: int, val_split: float, test_split: float, seed: int
+) -> tuple[list[int], list[int], list[int]]:
     """Random train/val/test split of [0, n)."""
     rng = random.Random(seed)
     indices = list(range(n))
@@ -204,7 +206,9 @@ def process_sen12ms(args: argparse.Namespace) -> None:
 
     rgb_indices = S2_RGB_INDICES_SEN12MS if not args.s2_standard_order else S2_RGB_INDICES_STANDARD
     splits_dirs = _make_split_dirs(output_dir)
-    train_idx, val_idx, test_idx = _split_indices(len(pairs), args.val_split, args.test_split, args.seed)
+    train_idx, val_idx, test_idx = _split_indices(
+        len(pairs), args.val_split, args.test_split, args.seed
+    )
     split_map = {i: "train" for i in train_idx}
     split_map.update({i: "val" for i in val_idx})
     split_map.update({i: "test" for i in test_idx})
@@ -342,7 +346,9 @@ def process_scenes(args: argparse.Namespace) -> None:
 
     logger.info(f"Extracted {len(all_patches):,} valid patches — splitting and saving...")
 
-    train_idx, val_idx, test_idx = _split_indices(len(all_patches), args.val_split, args.test_split, args.seed)
+    train_idx, val_idx, test_idx = _split_indices(
+        len(all_patches), args.val_split, args.test_split, args.seed
+    )
     split_map = {i: "train" for i in train_idx}
     split_map.update({i: "val" for i in val_idx})
     split_map.update({i: "test" for i in test_idx})
@@ -410,11 +416,13 @@ def build_parser() -> argparse.ArgumentParser:
     # EO options
     eo = p.add_argument_group("EO (Sentinel-2) options")
     eo.add_argument("--s2-scale", type=float, default=10_000.0,
-                    help="Divide raw uint16 values by this to get physical reflectance (default: 10000)")
+                    help="Divide raw uint16 values by this to get physical"
+                         " reflectance (default: 10000)")
     eo.add_argument("--refl-cap", type=float, default=0.3,
                     help="Clip reflectance at this value before uint8 scaling (default: 0.3)")
     eo.add_argument("--s2-standard-order", action="store_true",
-                    help="Use standard ESA band order (B01 first) instead of SEN12MS order (B02 first)")
+                    help="Use standard ESA band order (B01 first) instead of"
+                         " SEN12MS order (B02 first)")
 
     # Patch / scene options
     patch = p.add_argument_group("Patch extraction options (scenes mode)")
@@ -423,7 +431,8 @@ def build_parser() -> argparse.ArgumentParser:
     patch.add_argument("--stride", type=int, default=None,
                        help="Sliding window stride (default: image-size, i.e. no overlap)")
     patch.add_argument("--min-valid-fraction", type=float, default=0.8,
-                       help="Minimum fraction of finite, non-zero pixels for a patch to be kept (default: 0.8)")
+                       help="Minimum fraction of finite, non-zero pixels"
+                            " for a patch to be kept (default: 0.8)")
 
     # Split options
     split = p.add_argument_group("Train/val/test split")

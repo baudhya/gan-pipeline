@@ -12,7 +12,6 @@ from gan_pipeline.data.sentinel_utils import (
     normalize_sar,
 )
 
-
 # --- linear_to_db ---
 
 def test_linear_to_db_basic() -> None:

@@ -1,6 +1,5 @@
 from gan_pipeline.data.dataset import get_dataloader
 from gan_pipeline.data.paired_dataset import get_paired_dataloader
-from gan_pipeline.data.transforms import get_transforms
 from gan_pipeline.data.sentinel_utils import (
     linear_to_db,
     make_eo_image,
@@ -9,6 +8,7 @@ from gan_pipeline.data.sentinel_utils import (
     normalize_eo,
     normalize_sar,
 )
+from gan_pipeline.data.transforms import get_transforms
 
 __all__ = [
     "get_dataloader",

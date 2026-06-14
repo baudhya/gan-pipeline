@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import numpy as np
 
-
 # ---------------------------------------------------------------------------
 # SAR utilities
 # ---------------------------------------------------------------------------
@@ -169,7 +168,9 @@ def make_side_by_side(sar_img: np.ndarray, eo_img: np.ndarray) -> np.ndarray:
     h_sar, w_sar = sar_img.shape[:2]
     h_eo, w_eo = eo_img.shape[:2]
     if (h_sar, w_sar) != (h_eo, w_eo):
-        raise ValueError(f"SAR {sar_img.shape[:2]} and EO {eo_img.shape[:2]} spatial dims must match")
+        raise ValueError(
+            f"SAR {sar_img.shape[:2]} and EO {eo_img.shape[:2]} spatial dims must match"
+        )
 
     # Broadcast 1-channel SAR to 3 channels for uniform PNG output
     if sar_img.ndim == 2:

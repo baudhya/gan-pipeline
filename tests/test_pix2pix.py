@@ -1,5 +1,4 @@
-"""Tests for pix2pix components: U-Net, PatchGAN, multi-scale discriminator, paired dataset, trainer."""
-import random
+"""Tests for pix2pix: U-Net, PatchGAN, multi-scale discriminator, paired dataset, trainer."""
 from pathlib import Path
 
 import numpy as np
@@ -11,7 +10,6 @@ from PIL import Image
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
 from gan_pipeline.models.patchgan import PatchGANDiscriminator
 from gan_pipeline.models.unet import UNetGenerator
-
 
 # --- U-Net Generator ---
 
@@ -80,6 +78,7 @@ def test_multiscale_patch_shapes_256() -> None:
 def test_vgg_perceptual_loss_offline_path(tmp_path: Path) -> None:
     """VGGPerceptualLoss loads weights from a local file (no network needed)."""
     import torchvision.models as tvm
+
     from gan_pipeline.models.losses import VGGPerceptualLoss
 
     # Save a random-weight VGG16 state dict to disk
@@ -97,8 +96,9 @@ def test_vgg_perceptual_loss_offline_path(tmp_path: Path) -> None:
 @pytest.mark.parametrize("channels", [1, 3, 4])
 def test_vgg_perceptual_loss(channels: int) -> None:
     """VGGPerceptualLoss: correct scalar output, finite, zero on identical inputs."""
-    import torchvision.models as tvm
     from unittest.mock import patch
+
+    import torchvision.models as tvm
 
     dummy_vgg = tvm.vgg16(weights=None)  # random weights — no network download
     with patch("torchvision.models.vgg16", return_value=dummy_vgg):
@@ -190,7 +190,11 @@ def test_feature_matching_loss() -> None:
 
 
 def test_multiscale_discriminator_loss() -> None:
-    from gan_pipeline.models.losses import LossType, multiscale_discriminator_loss, multiscale_generator_loss
+    from gan_pipeline.models.losses import (
+        LossType,
+        multiscale_discriminator_loss,
+        multiscale_generator_loss,
+    )
 
     d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=3)
     real = torch.randn(2, 4, 256, 256)
@@ -209,7 +213,9 @@ def test_multiscale_discriminator_loss() -> None:
 # --- End-to-end pix2pix train step (multi-scale + hinge) ---
 
 @pytest.mark.parametrize("loss_type,n_scales", [("hinge", 3), ("bce", 1), ("hinge", 2)])
-def test_pix2pix_train_step(loss_type: str, n_scales: int, cfg, device: torch.device, tmp_path: Path) -> None:
+def test_pix2pix_train_step(
+    loss_type: str, n_scales: int, cfg, device: torch.device, tmp_path: Path
+) -> None:
     import omegaconf
 
     with omegaconf.open_dict(cfg):
@@ -262,7 +268,9 @@ def test_side_by_side_dataset(tmp_path: Path) -> None:
     from gan_pipeline.data.paired_dataset import SideBySidePairedDataset
 
     _make_side_by_side_dir(tmp_path, n=4)
-    ds = SideBySidePairedDataset(str(tmp_path), "train", image_size=64, sar_channels=1, eo_channels=3, augment=False)
+    ds = SideBySidePairedDataset(
+        str(tmp_path), "train", image_size=64, sar_channels=1, eo_channels=3, augment=False
+    )
     assert len(ds) == 4
 
     sample = ds[0]
@@ -275,7 +283,9 @@ def test_side_by_side_dataset_augment(tmp_path: Path) -> None:
     from gan_pipeline.data.paired_dataset import SideBySidePairedDataset
 
     _make_side_by_side_dir(tmp_path, n=2)
-    ds = SideBySidePairedDataset(str(tmp_path), "train", image_size=64, sar_channels=1, eo_channels=3, augment=True)
+    ds = SideBySidePairedDataset(
+        str(tmp_path), "train", image_size=64, sar_channels=1, eo_channels=3, augment=True
+    )
     sample = ds[0]
     assert sample["sar"].shape == (1, 64, 64)
     assert sample["eo"].shape == (3, 64, 64)

@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-import torch
 from PIL import Image
 
 from gan_pipeline.data.transforms import get_transforms

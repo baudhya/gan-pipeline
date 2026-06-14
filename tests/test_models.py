@@ -2,7 +2,12 @@ import pytest
 import torch
 
 from gan_pipeline.models import DCGANDiscriminator, DCGANGenerator
-from gan_pipeline.models.losses import LossType, discriminator_loss, generator_loss, gradient_penalty
+from gan_pipeline.models.losses import (
+    LossType,
+    discriminator_loss,
+    generator_loss,
+    gradient_penalty,
+)
 
 
 @pytest.mark.parametrize("image_size", [32, 64, 128])
@@ -38,7 +43,9 @@ def test_discriminator_loss(loss_type: LossType) -> None:
 
 def test_gradient_penalty() -> None:
     d = DCGANDiscriminator(channels=3, image_size=64)
-    gp = gradient_penalty(d, torch.randn(4, 3, 64, 64), torch.randn(4, 3, 64, 64), torch.device("cpu"))
+    gp = gradient_penalty(
+        d, torch.randn(4, 3, 64, 64), torch.randn(4, 3, 64, 64), torch.device("cpu")
+    )
     assert gp.shape == torch.Size([])
     assert torch.isfinite(gp)
 

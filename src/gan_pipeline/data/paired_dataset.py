@@ -59,11 +59,21 @@ class SideBySidePairedDataset(Dataset):
         eo_pil = eo_pil.convert("L" if self.eo_channels == 1 else "RGB")
 
         if self.augment:
-            sar_pil = TF.resize(sar_pil, [self.load_size, self.load_size], interpolation=TF.InterpolationMode.BICUBIC)
-            eo_pil = TF.resize(eo_pil, [self.load_size, self.load_size], interpolation=TF.InterpolationMode.BICUBIC)
+            sar_pil = TF.resize(
+                sar_pil,
+                [self.load_size, self.load_size],
+                interpolation=TF.InterpolationMode.BICUBIC,
+            )
+            eo_pil = TF.resize(
+                eo_pil,
+                [self.load_size, self.load_size],
+                interpolation=TF.InterpolationMode.BICUBIC,
+            )
 
             # Synchronized random crop
-            i, j, th, tw = transforms.RandomCrop.get_params(sar_pil, (self.image_size, self.image_size))
+            i, j, th, tw = transforms.RandomCrop.get_params(
+                sar_pil, (self.image_size, self.image_size)
+            )
             sar_pil = TF.crop(sar_pil, i, j, th, tw)
             eo_pil = TF.crop(eo_pil, i, j, th, tw)
 
@@ -72,8 +82,16 @@ class SideBySidePairedDataset(Dataset):
                 sar_pil = TF.hflip(sar_pil)
                 eo_pil = TF.hflip(eo_pil)
         else:
-            sar_pil = TF.resize(sar_pil, [self.image_size, self.image_size], interpolation=TF.InterpolationMode.BICUBIC)
-            eo_pil = TF.resize(eo_pil, [self.image_size, self.image_size], interpolation=TF.InterpolationMode.BICUBIC)
+            sar_pil = TF.resize(
+                sar_pil,
+                [self.image_size, self.image_size],
+                interpolation=TF.InterpolationMode.BICUBIC,
+            )
+            eo_pil = TF.resize(
+                eo_pil,
+                [self.image_size, self.image_size],
+                interpolation=TF.InterpolationMode.BICUBIC,
+            )
 
         return {
             "sar": self._to_tensor_normalized(sar_pil),
@@ -105,7 +123,9 @@ class SeparateDirPairedDataset(Dataset):
         self.eo_files = sorted(eo_root.iterdir())
 
         if len(self.sar_files) != len(self.eo_files):
-            raise ValueError(f"SAR/EO file count mismatch: {len(self.sar_files)} vs {len(self.eo_files)}")
+            raise ValueError(
+                f"SAR/EO file count mismatch: {len(self.sar_files)} vs {len(self.eo_files)}"
+            )
 
         self.image_size = image_size
         self.sar_channels = sar_channels
@@ -126,10 +146,20 @@ class SeparateDirPairedDataset(Dataset):
         eo_pil = Image.open(self.eo_files[idx]).convert("L" if self.eo_channels == 1 else "RGB")
 
         if self.augment:
-            sar_pil = TF.resize(sar_pil, [self.load_size, self.load_size], interpolation=TF.InterpolationMode.BICUBIC)
-            eo_pil = TF.resize(eo_pil, [self.load_size, self.load_size], interpolation=TF.InterpolationMode.BICUBIC)
+            sar_pil = TF.resize(
+                sar_pil,
+                [self.load_size, self.load_size],
+                interpolation=TF.InterpolationMode.BICUBIC,
+            )
+            eo_pil = TF.resize(
+                eo_pil,
+                [self.load_size, self.load_size],
+                interpolation=TF.InterpolationMode.BICUBIC,
+            )
 
-            i, j, th, tw = transforms.RandomCrop.get_params(sar_pil, (self.image_size, self.image_size))
+            i, j, th, tw = transforms.RandomCrop.get_params(
+                sar_pil, (self.image_size, self.image_size)
+            )
             sar_pil = TF.crop(sar_pil, i, j, th, tw)
             eo_pil = TF.crop(eo_pil, i, j, th, tw)
 
@@ -137,8 +167,16 @@ class SeparateDirPairedDataset(Dataset):
                 sar_pil = TF.hflip(sar_pil)
                 eo_pil = TF.hflip(eo_pil)
         else:
-            sar_pil = TF.resize(sar_pil, [self.image_size, self.image_size], interpolation=TF.InterpolationMode.BICUBIC)
-            eo_pil = TF.resize(eo_pil, [self.image_size, self.image_size], interpolation=TF.InterpolationMode.BICUBIC)
+            sar_pil = TF.resize(
+                sar_pil,
+                [self.image_size, self.image_size],
+                interpolation=TF.InterpolationMode.BICUBIC,
+            )
+            eo_pil = TF.resize(
+                eo_pil,
+                [self.image_size, self.image_size],
+                interpolation=TF.InterpolationMode.BICUBIC,
+            )
 
         return {
             "sar": self._to_tensor_normalized(sar_pil),
@@ -158,9 +196,13 @@ def get_paired_dataloader(
     dataset_format: str = "side_by_side",
 ) -> DataLoader:  # type: ignore[type-arg]
     if dataset_format == "side_by_side":
-        dataset = SideBySidePairedDataset(root, split, image_size, sar_channels, eo_channels, augment)
+        dataset = SideBySidePairedDataset(
+            root, split, image_size, sar_channels, eo_channels, augment
+        )
     elif dataset_format == "separate_dirs":
-        dataset = SeparateDirPairedDataset(root, split, image_size, sar_channels, eo_channels, augment)
+        dataset = SeparateDirPairedDataset(
+            root, split, image_size, sar_channels, eo_channels, augment
+        )
     else:
         raise ValueError(f"Unknown dataset_format: {dataset_format}")
 

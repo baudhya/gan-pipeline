@@ -1,4 +1,3 @@
-import math
 from enum import Enum
 
 import torch
@@ -97,7 +96,8 @@ class VGGPerceptualLoss(nn.Module):
         vgg = torchvision.models.vgg16(weights=None)
         if weights_path is not None:
             # Offline / air-gapped: load from a local .pth file.
-            # Pre-download: python -c "import torchvision; torchvision.models.vgg16(weights='IMAGENET1K_V1')"
+            # Pre-download:
+            #   python -c "import torchvision; torchvision.models.vgg16(weights='IMAGENET1K_V1')"
             # then copy ~/.cache/torch/hub/checkpoints/vgg16-397923af.pth to the target machine.
             state = torch.load(weights_path, map_location="cpu", weights_only=True)
             vgg.load_state_dict(state)

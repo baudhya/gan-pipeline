@@ -8,7 +8,12 @@ from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 
 from gan_pipeline.models.base import BaseDiscriminator, BaseGenerator
-from gan_pipeline.models.losses import LossType, discriminator_loss, generator_loss, gradient_penalty
+from gan_pipeline.models.losses import (
+    LossType,
+    discriminator_loss,
+    generator_loss,
+    gradient_penalty,
+)
 from gan_pipeline.utils.checkpointing import load_checkpoint, save_checkpoint
 
 

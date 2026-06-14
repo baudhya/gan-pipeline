@@ -24,7 +24,9 @@ def main(cfg: DictConfig) -> None:
     generator = load_generator(Path(cfg.checkpoint), generator, device)
 
     fake_dir = Path(cfg.output_dir) / "eval" / "fake"
-    generate_images(generator, n=cfg.get("eval_samples", 10_000), device=device, output_dir=fake_dir)
+    generate_images(
+        generator, n=cfg.get("eval_samples", 10_000), device=device, output_dir=fake_dir
+    )
 
     if real_dir := cfg.get("real_dir"):
         fid = compute_fid(Path(real_dir), fake_dir, device)

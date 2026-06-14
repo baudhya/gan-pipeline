@@ -2,7 +2,6 @@ from pathlib import Path
 
 import mlflow
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from loguru import logger
 from omegaconf import DictConfig
@@ -151,7 +150,10 @@ class Pix2PixTrainer:
             _to_3ch(fake_eo[:n]),
             _to_3ch(self.fixed_eo[:n]),
         ])
-        save_image(make_grid((rows + 1) / 2, nrow=n), self.output_dir / "samples" / f"epoch_{epoch:04d}.png")
+        save_image(
+            make_grid((rows + 1) / 2, nrow=n),
+            self.output_dir / "samples" / f"epoch_{epoch:04d}.png",
+        )
 
     def train(self, dataloader: DataLoader) -> None:  # type: ignore[type-arg]
         n_scales = len(self.discriminator.discriminators)
@@ -231,5 +233,11 @@ class Pix2PixTrainer:
                         self.discriminator,
                         self.opt_g,
                         self.opt_d,
-                        {"d_loss": avg_d, "g_adv": avg_g_adv, "g_l1": avg_g_l1, "g_vgg": avg_g_vgg, "g_fm": avg_g_fm},
+                        {
+                            "d_loss": avg_d,
+                            "g_adv": avg_g_adv,
+                            "g_l1": avg_g_l1,
+                            "g_vgg": avg_g_vgg,
+                            "g_fm": avg_g_fm,
+                        },
                     )
