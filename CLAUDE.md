@@ -94,6 +94,18 @@ CLI overrides: `python scripts/train_pix2pix.py training.loss_type=bce model.dis
 
 `sentinel_utils.py` contains pure-numpy preprocessing (no rasterio dependency): SAR linear→dB→clip→uint8, EO reflectance→clip→uint8, side-by-side assembly. These are called by `prepare_data.py` but are importable standalone.
 
+## Skills
+
+Invoke these with `/skill-name` in Claude Code. They are not yet created as formal `.claude/skills/` files — treat this as a reference for what to build or prompt manually.
+
+| Skill | When to use |
+|---|---|
+| `/smoke-test` | After any model/data change — generates 50 dummy pairs and runs 3 training epochs with all losses to confirm the full loop works |
+| `/train-run` | Starting a real or experimental training run — prompts for experiment name, loss type, n_scales, lambda overrides, then fires `train_pix2pix.py` with the right CLI flags |
+| `/eval-run` | Evaluating a checkpoint — prompts for checkpoint path and real image dir, then runs FID + IS via `scripts/evaluate.py` |
+| `/new-model` | Adding a new architecture — checklist: create `models/mymodel.py`, export from `__init__.py`, add `configs/model/mymodel.yaml`, wire into training script |
+| `/prep-data` | Preparing Sentinel data — guides through `prepare_data.py` args (mode, paths, SAR channels, splits) and runs the command |
+
 ### Key non-obvious constraints
 
 - **`ReLU(inplace=False)` in `_dec_block` (unet.py):** inplace ReLU in the decoder corrupts encoder skip tensors that LeakyReLU backward needs — causes `RuntimeError: ... is at version 2; expected version 1`. Never change these to inplace.
