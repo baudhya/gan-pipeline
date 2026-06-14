@@ -17,6 +17,8 @@ Production-grade SAR→EO image translation pipeline built on **pix2pix** with a
    - [Loss Functions](#loss-functions)
 3. [Project Structure](#project-structure)
 4. [Installation](#installation)
+   - [Quickstart](#quickstart-recommended)
+   - [Manual installation](#manual-installation)
    - [Pre-commit hooks](#pre-commit-hooks)
 5. [Data Preparation](#data-preparation)
    - [prepare_data.py — Sentinel-1/2 pipeline](#prepare_datapy--sentinel-12-pipeline)
@@ -385,6 +387,46 @@ gan-pipeline/
 ## Installation
 
 **Requirements:** Python ≥ 3.10
+
+### Quickstart (recommended)
+
+The repo ships an `init.sh` script that handles everything in one command:
+
+```bash
+git clone https://github.com/baudhya/gan-pipeline.git
+cd gan-pipeline
+bash init.sh
+```
+
+What it does:
+1. Checks Python ≥ 3.10
+2. Creates a `.venv` virtual environment
+3. Installs core + dev dependencies (`pip install -e ".[dev]"`)
+4. Installs pre-commit hooks (`pre-commit install`)
+5. Warns if VGG16 weights are missing
+
+**Environment variable overrides:**
+
+```bash
+# Also install geo + eval extras and auto-download VGG16 weights
+INSTALL_GEO=1 INSTALL_EVAL=1 DOWNLOAD_VGG=1 bash init.sh
+
+# Use a specific Python interpreter
+PYTHON=python3.11 bash init.sh
+
+# Custom venv location
+VENV_DIR=.myenv bash init.sh
+```
+
+After the script completes, activate the environment:
+
+```bash
+source .venv/bin/activate
+```
+
+---
+
+### Manual installation
 
 ```bash
 # Clone the repo
