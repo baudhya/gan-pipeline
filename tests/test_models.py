@@ -1,3 +1,6 @@
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import pytest
 import torch
 
@@ -54,3 +57,24 @@ def test_generator_sample() -> None:
     g = DCGANGenerator(latent_dim=100, channels=3, image_size=64)
     samples = g.sample(8, torch.device("cpu"))
     assert samples.shape == (8, 3, 64, 64)
+
+
+def test_generator_loss_invalid_type() -> None:
+    with pytest.raises(ValueError):
+        generator_loss(torch.randn(8), MagicMock())  # type: ignore[arg-type]
+
+
+def test_discriminator_loss_invalid_type() -> None:
+    with pytest.raises(ValueError):
+        discriminator_loss(torch.randn(8), torch.randn(8), MagicMock())  # type: ignore[arg-type]
+
+
+def test_vgg_perceptual_loss_missing_weights(tmp_path: Path) -> None:
+    import torchvision.models as tvm
+
+    from gan_pipeline.models.losses import VGGPerceptualLoss
+
+    dummy_vgg = tvm.vgg16(weights=None)
+    with patch("torchvision.models.vgg16", return_value=dummy_vgg):
+        with pytest.raises(FileNotFoundError):
+            VGGPerceptualLoss(weights_path=str(tmp_path / "nonexistent.pth"))

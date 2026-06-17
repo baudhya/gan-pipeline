@@ -1,8 +1,10 @@
 """Tests for pix2pix: U-Net, PatchGAN, multi-scale discriminator, paired dataset, trainer."""
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import numpy as np
+import omegaconf
 import pytest
 import torch
 import torch.nn as nn
@@ -11,6 +13,7 @@ from PIL import Image
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
 from gan_pipeline.models.patchgan import PatchGANDiscriminator
 from gan_pipeline.models.unet import UNetGenerator
+from gan_pipeline.utils.checkpointing import save_checkpoint
 
 # --- U-Net Generator ---
 
@@ -290,6 +293,131 @@ def test_pix2pix_train_step_wasserstein_gp(cfg, device: torch.device, tmp_path: 
     assert all(isinstance(v, float) for v in [d_loss, g_adv, g_l1, d_gp])
     assert all(not (v != v) for v in [d_loss, g_adv, g_l1, d_gp])  # no NaN
     assert d_gp > 0.0  # GP was computed
+
+
+def _pix2pix_cfg(cfg: omegaconf.DictConfig, tmp_path: Path) -> omegaconf.DictConfig:
+    with omegaconf.open_dict(cfg):
+        cfg.output_dir = str(tmp_path)
+        cfg.model.name = "pix2pix"
+        cfg.training.loss_type = "hinge"
+        cfg.training.lambda_l1 = 100.0
+        cfg.training.lambda_vgg = 0.0
+        cfg.training.lambda_fm = 0.0
+        cfg.training.lambda_gp = 0.0
+        cfg.data.sar_channels = 1
+        cfg.data.eo_channels = 3
+    return cfg
+
+
+def test_pix2pix_train_step_with_fm(
+    cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path
+) -> None:
+    cfg = _pix2pix_cfg(cfg, tmp_path)
+    with omegaconf.open_dict(cfg):
+        cfg.training.lambda_fm = 10.0
+
+    from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
+
+    g = UNetGenerator(in_channels=1, out_channels=3)
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
+    trainer = Pix2PixTrainer(g, d, cfg, device, tmp_path)
+
+    sar = torch.randn(2, 1, 256, 256)
+    eo = torch.randn(2, 3, 256, 256)
+    d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = trainer._train_step(sar, eo)
+    assert g_fm > 0.0
+
+
+def test_pix2pix_train_step_with_vgg(
+    cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path
+) -> None:
+    cfg = _pix2pix_cfg(cfg, tmp_path)
+    with omegaconf.open_dict(cfg):
+        cfg.training.lambda_vgg = 1.0
+
+    from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
+
+    mock_vgg_cls = MagicMock()
+    mock_vgg = MagicMock()
+    mock_vgg.to.return_value = mock_vgg
+    mock_vgg.return_value = torch.tensor(0.5)
+    mock_vgg_cls.return_value = mock_vgg
+
+    with patch("gan_pipeline.training.pix2pix_trainer.VGGPerceptualLoss", mock_vgg_cls):
+        g = UNetGenerator(in_channels=1, out_channels=3)
+        d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
+        trainer = Pix2PixTrainer(g, d, cfg, device, tmp_path)
+
+    sar = torch.randn(2, 1, 256, 256)
+    eo = torch.randn(2, 3, 256, 256)
+    d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = trainer._train_step(sar, eo)
+    assert g_vgg > 0.0
+
+
+def test_pix2pix_trainer_resume(
+    cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path
+) -> None:
+    cfg = _pix2pix_cfg(cfg, tmp_path)
+
+    from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
+
+    g = UNetGenerator(in_channels=1, out_channels=3)
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
+    trainer = Pix2PixTrainer(g, d, cfg, device, tmp_path)
+
+    ckpt = tmp_path / "ckpt.pt"
+    save_checkpoint(ckpt, 7, g, d, trainer.opt_g, trainer.opt_d, {"d_loss": 0.1})
+    trainer.resume(ckpt)
+    assert trainer.start_epoch == 8
+
+
+def test_pix2pix_trainer_save_samples(
+    cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path
+) -> None:
+    cfg = _pix2pix_cfg(cfg, tmp_path)
+
+    from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
+
+    g = UNetGenerator(in_channels=1, out_channels=3)
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
+    trainer = Pix2PixTrainer(g, d, cfg, device, tmp_path)
+
+    trainer.fixed_sar = torch.randn(2, 1, 256, 256, device=device)
+    trainer.fixed_eo = torch.randn(2, 3, 256, 256, device=device)
+    trainer._save_samples(0)
+    assert (tmp_path / "samples" / "epoch_0000.png").exists()
+
+
+def test_pix2pix_trainer_train_loop(
+    cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path
+) -> None:
+    from torch.utils.data import DataLoader, Dataset
+
+    cfg = _pix2pix_cfg(cfg, tmp_path)
+    with omegaconf.open_dict(cfg):
+        cfg.training.epochs = 1
+
+    from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
+
+    class _FakeDataset(Dataset[dict[str, torch.Tensor]]):
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, i: int) -> dict[str, torch.Tensor]:
+            return {"sar": torch.randn(1, 256, 256), "eo": torch.randn(3, 256, 256)}
+
+    loader: DataLoader[dict[str, torch.Tensor]] = DataLoader(_FakeDataset(), batch_size=1)
+
+    g = UNetGenerator(in_channels=1, out_channels=3)
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
+    trainer = Pix2PixTrainer(g, d, cfg, device, tmp_path)
+
+    with patch("gan_pipeline.training.pix2pix_trainer.mlflow") as mock_mlflow:
+        mock_mlflow.start_run.return_value = MagicMock()
+        trainer.train(loader)
+
+    assert (tmp_path / "samples" / "epoch_0000.png").exists()
+    assert (tmp_path / "checkpoints" / "epoch_0000.pt").exists()
 
 
 # --- Paired dataset ---
