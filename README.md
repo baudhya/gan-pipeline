@@ -1150,19 +1150,68 @@ make prepare-data
 
 Two separate entry points correspond to the two conditional GAN variants:
 
-**Original pix2pix** — U-Net generator, single PatchGAN, BCE + L1:
+---
+
+#### Original pix2pix
+
+U-Net generator · single PatchGAN · BCE + L1 · no VGG or feature matching
 
 ```bash
+# Default run (200 epochs)
 python scripts/train_pix2pix.py
+
+# Named experiment with custom epochs
 python scripts/train_pix2pix.py experiment_name=run1 training.epochs=50
+
+# Switch loss type
+python scripts/train_pix2pix.py training.loss_type=hinge
+
+# Reduce to 1-scale discriminator (faster, less stable)
+python scripts/train_pix2pix.py model.discriminator.n_scales=1
 ```
 
-**pix2pixHD** — Coarse-to-fine generator, 3-scale PatchGAN, LSGAN + VGG + FM:
+---
+
+#### pix2pixHD
+
+Coarse-to-fine generator · 3-scale PatchGAN · LSGAN + L1 + VGG perceptual + feature matching
+
+Requires VGG weights — run `make download-weights` once before training.
 
 ```bash
+# Default run (200 epochs, all losses enabled)
 python scripts/train_pix2pixhd.py
+
+# Named experiment
 python scripts/train_pix2pixhd.py experiment_name=hd1 training.epochs=200
+
+# Disable VGG loss (faster, no weights needed)
+python scripts/train_pix2pixhd.py training.lambda_vgg=0.0
+
+# Disable feature matching loss
+python scripts/train_pix2pixhd.py training.lambda_fm=0.0
+
+# Switch to Wasserstein loss with gradient penalty
+python scripts/train_pix2pixhd.py training.loss_type=wasserstein training.lambda_gp=10.0
+
+# Reduce discriminator scales (faster training, less global coherence)
+python scripts/train_pix2pixhd.py model.discriminator.n_scales=2
+
+# Larger generator (more capacity, higher VRAM usage)
+python scripts/train_pix2pixhd.py model.generator.base_features=128 model.generator.local_base_features=64
 ```
+
+**pix2pixHD vs pix2pix — when to use which:**
+
+| | pix2pix | pix2pixHD |
+|---|---|---|
+| Training time | Faster | ~2× slower (VGG + multi-scale D) |
+| Output quality | Good | Higher detail and global coherence |
+| VRAM requirement | ~4 GB | ~8 GB |
+| VGG weights needed | No | Yes (unless `lambda_vgg=0.0`) |
+| Recommended epochs | 100–200 | 200–400 |
+
+---
 
 Outputs are written to `outputs/<experiment_name>/`:
 
@@ -1182,19 +1231,26 @@ outputs/sar_eo_pix2pixhd/
 ### Resume from checkpoint
 
 ```bash
+# pix2pix
+python scripts/train_pix2pix.py resume=outputs/sar_eo_pix2pix/checkpoints/epoch_0050.pt
+
+# pix2pixHD
 python scripts/train_pix2pixhd.py resume=outputs/sar_eo_pix2pixhd/checkpoints/epoch_0050.pt
 ```
 
 ### Named experiments
 
 ```bash
-python scripts/train_pix2pixhd.py \
-  experiment_name=run_lsgan_3scale \
-  training.loss_type=lsgan \
-  model.discriminator.n_scales=3
+# pix2pix — compare loss types
+python scripts/train_pix2pix.py experiment_name=pix2pix_bce training.loss_type=bce
+python scripts/train_pix2pix.py experiment_name=pix2pix_hinge training.loss_type=hinge
+
+# pix2pixHD — compare discriminator scales
+python scripts/train_pix2pixhd.py experiment_name=hd_2scale model.discriminator.n_scales=2
+python scripts/train_pix2pixhd.py experiment_name=hd_3scale model.discriminator.n_scales=3
 ```
 
-Each experiment gets its own output directory: `outputs/run_lsgan_3scale/`.
+Each experiment gets its own output directory and MLflow run for easy comparison.
 
 ### Unconditional DCGAN
 
