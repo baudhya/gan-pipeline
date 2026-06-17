@@ -13,6 +13,7 @@ class LossType(str, Enum):
     BCE = "bce"
     WASSERSTEIN = "wasserstein"
     HINGE = "hinge"
+    LSGAN = "lsgan"
 
 
 def generator_loss(fake_logits: torch.Tensor, loss_type: LossType) -> torch.Tensor:
@@ -22,6 +23,8 @@ def generator_loss(fake_logits: torch.Tensor, loss_type: LossType) -> torch.Tens
         return -fake_logits.mean()
     if loss_type == LossType.HINGE:
         return -fake_logits.mean()
+    if loss_type == LossType.LSGAN:
+        return 0.5 * F.mse_loss(fake_logits, torch.ones_like(fake_logits))
     raise ValueError(f"Unknown loss type: {loss_type}")
 
 
@@ -38,6 +41,11 @@ def discriminator_loss(
         return fake_logits.mean() - real_logits.mean()
     if loss_type == LossType.HINGE:
         return F.relu(1.0 - real_logits).mean() + F.relu(1.0 + fake_logits).mean()
+    if loss_type == LossType.LSGAN:
+        return 0.5 * (
+            F.mse_loss(real_logits, torch.ones_like(real_logits))
+            + F.mse_loss(fake_logits, torch.zeros_like(fake_logits))
+        )
     raise ValueError(f"Unknown loss type: {loss_type}")
 
 

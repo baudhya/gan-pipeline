@@ -223,7 +223,7 @@ def test_multiscale_discriminator_loss() -> None:
 # --- End-to-end pix2pix train step (multi-scale + hinge) ---
 
 
-@pytest.mark.parametrize("loss_type,n_scales", [("hinge", 3), ("bce", 1), ("hinge", 2)])
+@pytest.mark.parametrize("loss_type,n_scales", [("hinge", 3), ("bce", 1), ("lsgan", 2)])
 def test_pix2pix_train_step(
     loss_type: str, n_scales: int, cfg, device: torch.device, tmp_path: Path
 ) -> None:
