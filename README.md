@@ -1240,10 +1240,35 @@ Saves a PNG grid to `outputs/generated/generated.png`.
 
 ## Experiment Tracking with MLflow
 
-Every training run automatically logs to MLflow (no setup required — runs log to `sqlite:///mlflow.db` by default under MLflow 3.x).
+Every training run automatically logs to MLflow — no setup required. Runs are stored in `mlflow.db` (SQLite) in the project root under MLflow 3.x.
 
-**Logged parameters:** model name, loss type, λ_L1, λ_VGG, λ_FM, λ_GP, number of discriminator scales, learning rates, batch size  
-**Logged metrics per epoch:** `d_loss`, `g_adv`, `g_l1`, `g_vgg`, `g_fm`, `d_gp` (when WGAN-GP is active)
+### What gets logged
+
+**Parameters** (logged once at run start):
+
+| Parameter | Example | Description |
+|---|---|---|
+| `model_name` | `pix2pixhd` | Value of `cfg.model.name` |
+| `loss_type` | `lsgan` | Adversarial loss function |
+| `lambda_l1` | `100.0` | L1 pixel loss weight |
+| `lambda_vgg` | `10.0` | VGG perceptual loss weight |
+| `lambda_fm` | `10.0` | Feature matching loss weight |
+| `lambda_gp` | `10.0` | Gradient penalty weight (WGAN-GP) |
+| `n_scales` | `3` | Number of discriminator scales |
+| `lr_g` | `0.0002` | Generator learning rate |
+| `lr_d` | `0.0002` | Discriminator learning rate |
+| `batch_size` | `1` | Training batch size |
+
+**Metrics** (logged every epoch):
+
+| Metric | Description |
+|---|---|
+| `d_loss` | Total discriminator loss |
+| `g_adv` | Generator adversarial loss |
+| `g_l1` | Generator L1 pixel loss |
+| `g_vgg` | Generator VGG perceptual loss |
+| `g_fm` | Generator feature matching loss |
+| `d_gp` | Gradient penalty (0.0 when not using WGAN-GP) |
 
 ### Start the MLflow UI
 
@@ -1251,10 +1276,26 @@ Every training run automatically logs to MLflow (no setup required — runs log 
 make mlflow
 # equivalent to:
 mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
-# Then open http://localhost:5000
 ```
 
-Or point at a remote tracking server:
+Then open `http://localhost:5000` in your browser.
+
+### Navigating the UI
+
+- **Experiments** — each unique `experiment_name` gets its own experiment (e.g. `sar_eo_pix2pixhd`)
+- **Runs** — each call to `train_pix2pix.py` or `train_pix2pixhd.py` creates a new run
+- **Compare runs** — select two or more runs and click *Compare* to plot metrics side by side
+- **Metric charts** — click any run → *Metrics* tab → select `d_loss`, `g_adv`, etc. to see epoch curves
+
+### Naming experiments
+
+```bash
+# Each experiment_name gets its own group in the MLflow UI
+python scripts/train_pix2pixhd.py experiment_name=lsgan_3scale
+python scripts/train_pix2pixhd.py experiment_name=hinge_3scale training.loss_type=hinge
+```
+
+### Remote tracking server
 
 ```bash
 export MLFLOW_TRACKING_URI=http://your-mlflow-server:5000
@@ -1358,6 +1399,7 @@ make download-weights  # download VGG16 weights into weights/ (~528 MB, run once
 make prepare-data      # python scripts/prepare_data.py (sen12ms mode, edit paths first)
 make train             # python scripts/train_pix2pix.py
 make train-dcgan       # python scripts/train.py model=dcgan ...
+make mlflow            # mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
 make clean             # remove __pycache__, .pytest_cache, .mypy_cache, egg-info
 make clean-venv        # remove .venv
 make clean-all         # clean + clean-venv
