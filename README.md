@@ -1326,8 +1326,11 @@ pytest tests/test_sentinel_utils.py -v
 # Run tests matching a pattern
 pytest -k "multiscale or sentinel" -v
 
-# With coverage report
+# With coverage report (terminal)
 pytest --cov=gan_pipeline --cov-report=term-missing
+
+# With coverage report (terminal + HTML)
+make coverage                        # opens htmlcov/index.html in browser
 ```
 
 ### Test coverage
@@ -1347,6 +1350,7 @@ pytest --cov=gan_pipeline --cov-report=term-missing
 make venv              # create .venv virtual environment (PYTHON= and VENV_DIR= overridable)
 make install           # pip install -e ".[dev]"
 make test              # pytest
+make coverage          # pytest --cov=gan_pipeline --cov-report=term-missing --cov-report=html
 make lint              # ruff + black --check + isort --check
 make format            # black + isort + ruff --fix (in-place)
 make typecheck         # mypy src/
