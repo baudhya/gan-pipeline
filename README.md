@@ -1432,6 +1432,11 @@ generator.load_state_dict(state["generator"])
 
 PDFs are in [`papers/`](papers/) in chronological reading order.
 
+| Guide | Description |
+|---|---|
+| [READING_ROADMAP.md](papers/READING_ROADMAP.md) | Four-week beginner schedule — what to focus on, what to skip, and which source file each paper explains |
+| [IMPORTANT.md](papers/IMPORTANT.md) | YouTube search terms for math prerequisites and paper-specific explanations |
+
 | # | Paper | What it introduces |
 |---|---|---|
 | 1 | Goodfellow et al., 2014 — [*Generative Adversarial Nets*](papers/01_GAN_Goodfellow_2014.pdf) | GAN min-max game, BCE loss, core training loop |
