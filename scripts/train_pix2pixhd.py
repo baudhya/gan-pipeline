@@ -1,4 +1,4 @@
-"""SAR→EO training entry point — original pix2pix (U-Net + single PatchGAN, L1 only)."""
+"""SAR→EO training entry point — pix2pixHD (U-Net + multi-scale PatchGAN, VGG + FM losses)."""
 
 import random
 from pathlib import Path
@@ -24,7 +24,7 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="config_pix2pix")
+@hydra.main(version_base=None, config_path="../configs", config_name="config_pix2pixhd")
 def main(cfg: DictConfig) -> None:
     output_dir = Path(cfg.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

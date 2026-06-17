@@ -61,10 +61,11 @@ make prepare-data                   # prepare Sentinel data (edit paths in Makef
 python scripts/make_dummy_data.py   # generate 50 dummy SAR/EO pairs for smoke testing
 
 # Training
-python scripts/train_pix2pix.py                                         # pix2pix with defaults
-python scripts/train_pix2pix.py training.loss_type=bce                  # override loss
-python scripts/train_pix2pix.py experiment_name=run1 training.epochs=50 # named experiment
-python scripts/train.py model=dcgan training=default data=celeba         # unconditional DCGAN
+python scripts/train_pix2pix.py                                              # original pix2pix (single PatchGAN, L1 only, BCE)
+python scripts/train_pix2pix.py experiment_name=run1 training.epochs=50     # named experiment
+python scripts/train_pix2pixhd.py                                            # pix2pixHD (multi-scale, VGG + FM losses, hinge)
+python scripts/train_pix2pixhd.py experiment_name=hd1 training.epochs=200   # named pix2pixHD run
+python scripts/train.py model=dcgan training=default data=celeba             # unconditional DCGAN
 
 # Evaluation
 python scripts/evaluate.py checkpoint=outputs/.../epoch_0199.pt real_dir=data/sar_eo/test
