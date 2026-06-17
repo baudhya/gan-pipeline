@@ -1,4 +1,4 @@
-.PHONY: install venv lint format typecheck test train generate download-weights \
+.PHONY: install venv lint format typecheck test coverage train generate download-weights \
         mlflow clean clean-venv clean-all
 
 VENV_DIR ?= .venv
@@ -32,6 +32,10 @@ typecheck:
 
 test:
 	pytest
+
+coverage:
+	pytest --cov=gan_pipeline --cov-report=term-missing --cov-report=html
+	@echo "HTML report: htmlcov/index.html"
 
 # ── Data ──────────────────────────────────────────────────────────────────────
 
