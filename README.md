@@ -40,6 +40,7 @@ Production-grade SAR→EO image translation pipeline with two conditional GAN va
 11. [Docker](#docker)
 12. [Running Tests](#running-tests)
 13. [Code Reference](#code-reference)
+14. [References](#references)
 
 ---
 
@@ -1424,3 +1425,23 @@ from gan_pipeline.utils.checkpointing import load_checkpoint
 state = load_checkpoint(Path("epoch_0199.pt"), device)
 generator.load_state_dict(state["generator"])
 ```
+
+---
+
+## References
+
+PDFs are in [`papers/`](papers/) in chronological reading order.
+
+| # | Paper | What it introduces |
+|---|---|---|
+| 1 | Goodfellow et al., 2014 — [*Generative Adversarial Nets*](papers/01_GAN_Goodfellow_2014.pdf) | GAN min-max game, BCE loss, core training loop |
+| 2 | Simonyan & Zisserman, 2014 — [*Very Deep Convolutional Networks for Large-Scale Image Recognition*](papers/02_VGG_Simonyan_2014.pdf) | VGG16 backbone used by `VGGPerceptualLoss` |
+| 3 | Radford et al., 2015 — [*Unsupervised Representation Learning with DCGANs*](papers/03_DCGAN_Radford_2015.pdf) | `Conv2d(4×4, stride=2)` + BN + LReLU pattern; `DCGANGenerator` |
+| 4 | Ronneberger et al., 2015 — [*U-Net: Convolutional Networks for Biomedical Image Segmentation*](papers/04_UNet_Ronneberger_2015.pdf) | Skip connections between encoder and decoder; `UNetGenerator` |
+| 5 | Johnson et al., 2016 — [*Perceptual Losses for Real-Time Style Transfer*](papers/05_PerceptualLosses_Johnson_2016.pdf) | Feature-space loss using frozen VGG; concept behind `VGGPerceptualLoss` |
+| 6 | Arjovsky et al., 2017 — [*Wasserstein GAN*](papers/06_WGAN_Arjovsky_2017.pdf) | Earth Mover's Distance loss; `LossType.WASSERSTEIN` |
+| 7 | Gulrajani et al., 2017 — [*Improved Training of Wasserstein GANs*](papers/07_WGANGP_Gulrajani_2017.pdf) | Gradient penalty on interpolated samples; `multiscale_gradient_penalty` |
+| 8 | Mao et al., 2017 — [*Least Squares Generative Adversarial Networks*](papers/08_LSGAN_Mao_2017.pdf) | MSE-based adversarial loss; `LossType.LSGAN` (pix2pixHD default) |
+| 9 | Isola et al., 2017 — [*Image-to-Image Translation with Conditional Adversarial Networks*](papers/09_pix2pix_Isola_2017.pdf) | PatchGAN, U-Net generator, L1+adversarial loss; `train_pix2pix.py` |
+| 10 | Miyato et al., 2018 — [*Spectral Normalization for Generative Adversarial Networks*](papers/10_SpectralNorm_Miyato_2018.pdf) | Per-layer Lipschitz constraint via `nn.utils.spectral_norm` |
+| 11 | Wang et al., 2018 — [*High-Resolution Image Synthesis with Conditional GANs*](papers/11_pix2pixHD_Wang_2018.pdf) | Multi-scale discriminator, coarse-to-fine generator, feature matching loss; `train_pix2pixhd.py` |
