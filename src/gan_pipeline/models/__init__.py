@@ -1,4 +1,5 @@
 from gan_pipeline.models.base import BaseDiscriminator, BaseGenerator
+from gan_pipeline.models.coarse_to_fine import CoarseToFineGenerator
 from gan_pipeline.models.dcgan import DCGANDiscriminator, DCGANGenerator
 from gan_pipeline.models.losses import (
     LossType,
@@ -17,6 +18,7 @@ from gan_pipeline.models.unet import UNetGenerator
 __all__ = [
     "BaseGenerator",
     "BaseDiscriminator",
+    "CoarseToFineGenerator",
     "DCGANGenerator",
     "DCGANDiscriminator",
     "UNetGenerator",

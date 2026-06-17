@@ -10,6 +10,11 @@ import torch
 import torch.nn as nn
 from PIL import Image
 
+from gan_pipeline.models.coarse_to_fine import (
+    CoarseToFineGenerator,
+    GlobalUNetGenerator,
+    LocalEnhancer,
+)
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
 from gan_pipeline.models.patchgan import PatchGANDiscriminator
 from gan_pipeline.models.unet import UNetGenerator
@@ -32,6 +37,52 @@ def test_unet_skip_connections_preserve_gradients() -> None:
     x = torch.randn(1, 1, 256, 256, requires_grad=True)
     out = g(x)
     out.sum().backward()
+
+
+# --- CoarseToFineGenerator ---
+
+
+def test_global_unet_output_shape() -> None:
+    g = GlobalUNetGenerator(in_channels=1, out_channels=3)
+    x = torch.randn(2, 1, 128, 128)
+    out = g(x)
+    assert out.shape == (2, 3, 128, 128)
+    assert out.min() >= -1.0 and out.max() <= 1.0
+
+
+def test_local_enhancer_output_shape() -> None:
+    # in_channels = sar_ch + eo_ch = 1 + 3 = 4
+    le = LocalEnhancer(in_channels=4, out_channels=3, base_features=16)
+    x = torch.randn(2, 4, 256, 256)
+    out = le(x)
+    assert out.shape == (2, 3, 256, 256)
+    assert out.min() >= -1.0 and out.max() <= 1.0
+
+
+@pytest.mark.parametrize("sar_ch,eo_ch", [(1, 3), (3, 3)])
+def test_coarse_to_fine_output_shape(sar_ch: int, eo_ch: int) -> None:
+    g = CoarseToFineGenerator(
+        in_channels=sar_ch, out_channels=eo_ch, base_features=16, local_base_features=8
+    )
+    x = torch.randn(1, sar_ch, 256, 256)
+    out = g(x)
+    assert out.shape == (1, eo_ch, 256, 256)
+    assert out.min() >= -1.0 and out.max() <= 1.0
+
+
+def test_coarse_to_fine_gradients_flow() -> None:
+    g = CoarseToFineGenerator(
+        in_channels=1, out_channels=3, base_features=16, local_base_features=8
+    )
+    x = torch.randn(1, 1, 256, 256, requires_grad=True)
+    out = g(x)
+    out.sum().backward()
+    assert x.grad is not None
+    # Both global and local parameters should receive gradients
+    global_grads = [p.grad for p in g.global_generator.parameters() if p.grad is not None]
+    local_grads = [p.grad for p in g.local_enhancer.parameters() if p.grad is not None]
+    assert len(global_grads) > 0
+    assert len(local_grads) > 0
     assert x.grad is not None
 
 

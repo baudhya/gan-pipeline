@@ -1,6 +1,7 @@
-name: pix2pix
+name: pix2pixhd
 generator:
   base_features: 64
+  local_base_features: 32   # LocalEnhancer channel width
 discriminator:
   base_features: 64
   n_scales: 3       # number of PatchGAN scales (1 = single-scale)

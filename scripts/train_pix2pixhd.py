@@ -1,4 +1,4 @@
-"""SAR→EO training entry point — pix2pixHD (U-Net + multi-scale PatchGAN, VGG + FM losses)."""
+"""SAR→EO training entry point — pix2pixHD (coarse-to-fine generator, multi-scale PatchGAN)."""
 
 import random
 from pathlib import Path
@@ -10,8 +10,8 @@ from loguru import logger
 from omegaconf import DictConfig
 
 from gan_pipeline.data.paired_dataset import get_paired_dataloader
+from gan_pipeline.models.coarse_to_fine import CoarseToFineGenerator
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
-from gan_pipeline.models.unet import UNetGenerator
 from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
 from gan_pipeline.utils import setup_logging
 
@@ -48,10 +48,11 @@ def main(cfg: DictConfig) -> None:
     )
     logger.info(f"Train set: {len(train_loader.dataset)} pairs")
 
-    generator = UNetGenerator(
+    generator = CoarseToFineGenerator(
         in_channels=cfg.data.sar_channels,
         out_channels=cfg.data.eo_channels,
         base_features=cfg.model.generator.base_features,
+        local_base_features=cfg.model.generator.local_base_features,
     )
     discriminator = MultiScaleDiscriminator(
         sar_channels=cfg.data.sar_channels,
