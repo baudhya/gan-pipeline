@@ -4,7 +4,11 @@
 [![pre-commit](https://github.com/baudhya/gan-pipeline/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/pre-commit.yml)
 [![pytest](https://github.com/baudhya/gan-pipeline/actions/workflows/pytest.yml/badge.svg)](https://github.com/baudhya/gan-pipeline/actions/workflows/pytest.yml)
 
-Production-grade SAR→EO image translation pipeline built on **pix2pix** with a **U-Net generator**, **multi-scale PatchGAN discriminator**, **hinge loss**, **VGG perceptual loss**, and **feature matching loss**. Supports unconditional DCGAN training as well.
+Production-grade SAR→EO image translation pipeline with two conditional GAN variants and an unconditional DCGAN:
+
+- **pix2pix** — U-Net generator, single PatchGAN discriminator, BCE + L1 loss (Isola et al., 2017)
+- **pix2pixHD** — Coarse-to-fine generator (GlobalUNet + LocalEnhancer), multi-scale PatchGAN (3 scales), LSGAN + L1 + VGG perceptual + feature matching losses (Wang et al., 2018)
+- **DCGAN** — unconditional generation from latent vectors
 
 ---
 
@@ -13,6 +17,7 @@ Production-grade SAR→EO image translation pipeline built on **pix2pix** with a
 1. [Overview](#overview)
 2. [Architecture](#architecture)
    - [U-Net Generator](#u-net-generator)
+   - [Coarse-to-Fine Generator (pix2pixHD)](#coarse-to-fine-generator-pix2pixhd)
    - [Multi-Scale PatchGAN Discriminator](#multi-scale-patchgan-discriminator)
    - [Loss Functions](#loss-functions)
 3. [Project Structure](#project-structure)
@@ -51,7 +56,7 @@ Pix2pix is the standard conditional image-to-image translation framework. Unlike
 - Experiment tracking via [MLflow](https://mlflow.org/) out of the box
 - Multi-scale discriminator for both local texture and global structure discrimination
 - Synchronized data augmentation across SAR/EO pairs
-- 68 passing tests with parametrized coverage of shapes, loss types, and scales
+- 103 passing tests with parametrized coverage of shapes, loss types, and scales
 - Docker + docker-compose for reproducible deployment
 - GitHub Actions CI pipeline (lint → typecheck → test)
 
@@ -108,6 +113,72 @@ Input SAR  (1 or 3 ch, 256×256)
 - Weights initialized from `N(0, 0.02)` following pix2pix convention
 
 **Parameter count (default config):** ~54 million
+
+---
+
+### Coarse-to-Fine Generator (pix2pixHD)
+
+**File:** `src/gan_pipeline/models/coarse_to_fine.py`  
+**Classes:** `GlobalUNetGenerator`, `LocalEnhancer`, `CoarseToFineGenerator`
+
+The pix2pixHD generator is split into two cascaded stages. Each stage is a U-Net style encoder-decoder; together they process the image at two resolutions.
+
+#### Stage 1 — GlobalUNetGenerator (128×128)
+
+A 7-level U-Net that receives a 2× downsampled version of the SAR input (128×128 for 256×256 training data) and produces a coarse EO prediction at half resolution.
+
+```
+Input SAR (2× downsampled, 128×128)
+     │
+  enc1: (in_ch → bf,    128→64)   no BatchNorm
+  enc2: (bf   → bf×2,   64→32)
+  enc3: (bf×2 → bf×4,   32→16)
+  enc4: (bf×4 → bf×8,   16→8)
+  enc5: (bf×8 → bf×8,    8→4)
+  enc6: (bf×8 → bf×8,    4→2)
+  enc7: (bf×8 → bf×8,    2→1)    no BatchNorm (bottleneck)
+     │
+  dec1: (bf×8  → bf×8,   1→2)    Dropout 0.5  + skip e6
+  dec2: (bf×16 → bf×8,   2→4)    Dropout 0.5  + skip e5
+  dec3: (bf×16 → bf×8,   4→8)    Dropout 0.5  + skip e4
+  dec4: (bf×16 → bf×4,   8→16)               + skip e3
+  dec5: (bf×8  → bf×2,  16→32)               + skip e2
+  dec6: (bf×4  → bf,    32→64)               + skip e1
+  out:  ConvT(bf×2 → out_ch, 64→128)  Tanh
+     │
+  Coarse EO (128×128, range [-1, 1])
+```
+
+#### Stage 2 — LocalEnhancer (256×256)
+
+A 3-level encoder-decoder that receives the full-resolution SAR image concatenated channel-wise with the bilinearly upsampled coarse prediction from Stage 1 (`in_channels = sar_ch + eo_ch`).
+
+```
+Input: cat([SAR_256, coarse_up_256])   (sar_ch + eo_ch channels)
+     │
+  enc1: (in_ch → lbf,    256→128)   no BatchNorm
+  enc2: (lbf   → lbf×2,  128→64)
+  enc3: (lbf×2 → lbf×4,   64→32)
+     │
+  dec1: (lbf×4 → lbf×2,   32→64)               + skip e2
+  dec2: (lbf×4 → lbf,      64→128)              + skip e1
+  out:  ConvT(lbf×2 → out_ch, 128→256)  Tanh
+     │
+  Final EO (256×256, range [-1, 1])
+```
+
+#### CoarseToFineGenerator — forward pass
+
+```python
+x_low   = avg_pool2d(x, kernel_size=2, stride=2)     # 256→128
+coarse  = global_generator(x_low)                    # 128×128 EO
+coarse_up = interpolate(coarse, size=x.shape[2:],    # upsample to 256
+                        mode="bilinear")
+output  = local_enhancer(cat([x, coarse_up], dim=1)) # 256×256 EO
+```
+
+**Default channel widths:** `base_features=64` (global stage), `local_base_features=32` (local stage).  
+Unlike the original pix2pixHD paper (which uses ResNet-based generators), both stages use U-Net encoder-decoders, consistent with the project's pix2pix backbone.
 
 ---
 
@@ -194,11 +265,24 @@ SN is applied **after** `_init_weights()` so `weight_orig` retains the pix2pix N
 
 **File:** `src/gan_pipeline/models/losses.py`
 
-Three adversarial loss types are supported, selectable via `training.loss_type`. VGG perceptual loss and feature matching loss can be layered on top of any of them.
+Four adversarial loss types are supported, selectable via `training.loss_type`. VGG perceptual loss and feature matching loss can be layered on top of any of them.
 
-#### Hinge Loss (default)
+#### LSGAN (pix2pixHD default)
 
-The **recommended** loss for pix2pix with PatchGAN. Derived from the SVM margin objective.
+Least Squares GAN (Mao et al., 2017). Labels real patches as 1 and fake patches as 0; the generator is penalized by its MSE distance from 1.
+
+```
+L_D = 0.5 × (MSE(D(real), 1) + MSE(D(fake), 0))
+L_G = 0.5 × MSE(D(fake), 1)
+```
+
+- Avoids the vanishing-gradient problem of BCE (loss stays non-zero far from the decision boundary)
+- Stabilises training by penalizing overconfident discriminator outputs
+- Default for the pix2pixHD pipeline (`training.loss_type: lsgan`)
+
+#### Hinge Loss
+
+Derived from the SVM margin objective. Recommended for multi-scale PatchGAN.
 
 ```
 L_D = mean(relu(1 − real_logits)) + mean(relu(1 + fake_logits))
@@ -208,7 +292,6 @@ L_G = −mean(fake_logits)
 - Real logits ≥ 1 contribute zero discriminator loss (already confident)
 - Fake logits ≤ −1 contribute zero discriminator loss (also confident)
 - The generator maximizes discriminator output without a saturating ceiling
-- Tends to produce stable gradients throughout training
 
 #### BCE Loss
 
@@ -228,16 +311,36 @@ L_D = mean(fake_logits) − mean(real_logits)
 L_G = −mean(fake_logits)
 ```
 
-Requires gradient clipping or gradient penalty (toggle with `training.gradient_penalty: true`, weight with `training.gradient_penalty_lambda`).
+Use with `lambda_gp > 0` to enforce the Lipschitz constraint via gradient penalty (see below). Without GP, the discriminator is unconstrained and training can diverge.
+
+#### Gradient Penalty (WGAN-GP)
+
+**Function:** `multiscale_gradient_penalty` in `src/gan_pipeline/models/losses.py`
+
+Applied automatically when `training.loss_type: wasserstein` and `training.lambda_gp > 0`.
+
+```
+x̂ = α · real_pair + (1 − α) · fake_pair.detach()     α ~ Uniform(0, 1)
+GP = E[(‖∇_{x̂} D(x̂)‖₂ − 1)²]                        averaged across all scales
+L_D_total = L_D_wgan + λ_GP · GP
+```
+
+The penalty is computed separately for each discriminator scale and averaged. All `autograd.grad` calls use `retain_graph=True` because `d_loss.backward()` must differentiate through the second-order GP graph, which references the discriminator's forward-pass activations from the GP run. Freeing them early with `retain_graph=False` causes a `RuntimeError: Trying to backward through the graph a second time`.
+
+```bash
+# Enable WGAN-GP training
+python scripts/train_pix2pix.py training.loss_type=wasserstein training.lambda_gp=10.0
+```
 
 #### Multi-Scale Wrappers
 
 ```python
 multiscale_discriminator_loss(real_maps_list, fake_maps_list, loss_type)
 multiscale_generator_loss(fake_maps_list, loss_type)
+multiscale_gradient_penalty(discriminator, real_pair, fake_pair)
 ```
 
-Both take the list of patch maps from `MultiScaleDiscriminator.forward()` and return a single scalar — the mean loss across all scales.
+The first two take the list of patch maps from `MultiScaleDiscriminator.forward()` and return a single scalar — the mean loss across all scales. `multiscale_gradient_penalty` takes the full discriminator module and the concatenated `cat([sar, eo])` pair tensors.
 
 #### VGG Perceptual Loss
 
@@ -325,10 +428,11 @@ gan-pipeline/
 │   ├── models/
 │   │   ├── base.py                 # BaseGenerator, BaseDiscriminator ABCs
 │   │   ├── dcgan.py                # DCGAN generator + discriminator (unconditional)
-│   │   ├── unet.py                 # U-Net generator (conditional)
+│   │   ├── unet.py                 # 8-level U-Net generator (pix2pix)
+│   │   ├── coarse_to_fine.py       # GlobalUNetGenerator + LocalEnhancer + CoarseToFineGenerator (pix2pixHD)
 │   │   ├── patchgan.py             # 70×70 PatchGAN discriminator
 │   │   ├── multiscale_disc.py      # Multi-scale PatchGAN wrapper
-│   │   └── losses.py               # BCE, Wasserstein, Hinge; multi-scale helpers
+│   │   └── losses.py               # BCE, Hinge, LSGAN, Wasserstein+GP; multi-scale helpers
 │   │
 │   ├── training/
 │   │   ├── trainer.py              # GANTrainer — unconditional DCGAN training loop
@@ -345,12 +449,16 @@ gan-pipeline/
 │       └── logging.py              # Loguru setup (stderr + rotating file)
 │
 ├── configs/                        # Hydra configuration tree
-│   ├── config.yaml                 # Root config: selects model/training/data defaults
+│   ├── config.yaml                 # Root config (DCGAN default)
+│   ├── config_pix2pix.yaml         # Root config for original pix2pix
+│   ├── config_pix2pixhd.yaml       # Root config for pix2pixHD
 │   ├── model/
-│   │   ├── pix2pix.yaml            # U-Net + multi-scale PatchGAN (DEFAULT)
+│   │   ├── pix2pix.yaml            # CoarseToFineGenerator + 3-scale PatchGAN (pix2pixHD)
+│   │   ├── pix2pix_original.yaml   # UNetGenerator + 1-scale PatchGAN (pix2pix)
 │   │   └── dcgan.yaml              # DCGAN architecture
 │   ├── training/
-│   │   ├── pix2pix.yaml            # pix2pix hyperparameters (DEFAULT)
+│   │   ├── pix2pix.yaml            # pix2pixHD hyperparameters (LSGAN, VGG+FM losses)
+│   │   ├── pix2pix_original.yaml   # pix2pix hyperparameters (BCE, L1 only)
 │   │   └── default.yaml            # DCGAN hyperparameters
 │   └── data/
 │       ├── sar_eo.yaml             # SAR→EO dataset (DEFAULT)
@@ -358,16 +466,18 @@ gan-pipeline/
 │
 ├── scripts/
 │   ├── prepare_data.py             # Sentinel-1/2 data preparation (argparse CLI)
-│   ├── train_pix2pix.py            # Entry point: SAR→EO pix2pix training
+│   ├── train_pix2pix.py            # Entry point: pix2pix (UNetGenerator, BCE+L1)
+│   ├── train_pix2pixhd.py          # Entry point: pix2pixHD (CoarseToFineGenerator, LSGAN+VGG+FM)
 │   ├── train.py                    # Entry point: unconditional DCGAN training
 │   ├── evaluate.py                 # Compute FID / IS from a checkpoint
 │   └── generate.py                 # Generate images from a checkpoint
 │
 ├── tests/
 │   ├── conftest.py                 # Shared fixtures (device, cfg)
-│   ├── test_data.py                # Transform shape/range tests
+│   ├── test_data.py                # Transform shape/range tests, dataset formats
 │   ├── test_models.py              # DCGAN shapes, losses, gradient penalty
-│   ├── test_pix2pix.py             # U-Net, PatchGAN, multi-scale, dataset, trainer
+│   ├── test_pix2pix.py             # U-Net, CoarseToFine, PatchGAN, multi-scale, trainer
+│   ├── test_inference.py           # generate.py and metrics.py (mocked torch-fidelity)
 │   ├── test_sentinel_utils.py      # SAR/EO preprocessing: normalize, assemble, validate
 │   └── test_training.py            # Checkpoint save/load, DCGAN trainer step
 │
@@ -912,34 +1022,55 @@ python scripts/train.py model=dcgan training=default data=celeba
 
 ### Key config parameters
 
-#### `configs/model/pix2pix.yaml`
+#### `configs/model/pix2pix.yaml` (pix2pixHD)
 
 | Key | Default | Description |
 |---|---|---|
-| `model.generator.base_features` | `64` | Base channel count for U-Net; doubled at each encoder level up to 512 |
+| `model.generator.base_features` | `64` | GlobalUNetGenerator channel width; doubled at each encoder level |
+| `model.generator.local_base_features` | `32` | LocalEnhancer channel width |
 | `model.discriminator.base_features` | `64` | Base channel count for each PatchGAN |
 | `model.discriminator.n_scales` | `3` | Number of discriminator scales |
 | `model.discriminator.spectral_norm` | `true` | Apply spectral norm to all D conv layers |
 
-#### `configs/training/pix2pix.yaml`
+#### `configs/model/pix2pix_original.yaml` (pix2pix)
+
+| Key | Default | Description |
+|---|---|---|
+| `model.generator.base_features` | `64` | UNetGenerator channel width |
+| `model.discriminator.base_features` | `64` | Base channel count for PatchGAN |
+| `model.discriminator.n_scales` | `1` | Single-scale discriminator |
+| `model.discriminator.spectral_norm` | `false` | No spectral norm (original pix2pix) |
+
+#### `configs/training/pix2pix.yaml` (pix2pixHD)
 
 | Key | Default | Description |
 |---|---|---|
 | `training.epochs` | `200` | Total training epochs |
-| `training.batch_size` | `1` | Batch size (pix2pix typically uses 1) |
+| `training.batch_size` | `1` | Batch size (pix2pixHD uses 1) |
 | `training.lr_generator` | `0.0002` | Generator Adam learning rate |
 | `training.lr_discriminator` | `0.0002` | Discriminator Adam learning rate |
 | `training.beta1` | `0.5` | Adam β₁ (lower than default 0.9 for GAN stability) |
 | `training.beta2` | `0.999` | Adam β₂ |
-| `training.loss_type` | `hinge` | Loss function: `hinge`, `bce`, or `wasserstein` |
+| `training.loss_type` | `lsgan` | Loss function: `lsgan`, `hinge`, `bce`, or `wasserstein` |
 | `training.lambda_l1` | `100.0` | Weight of pixel-level L1 loss term |
 | `training.lambda_vgg` | `10.0` | Weight of VGG perceptual loss; set to `0.0` to disable |
-| `training.vgg_weights_path` | `weights/vgg16-397923af.pth` | Local path to VGG16 weights; run `make download-weights` once to populate; `null` = download on first run |
+| `training.vgg_weights_path` | `weights/vgg16-397923af.pth` | Local path to VGG16 weights; run `make download-weights` once; `null` = auto-download |
 | `training.lambda_fm` | `10.0` | Weight of feature matching loss; set to `0.0` to disable |
+| `training.lambda_gp` | `10.0` | Gradient penalty weight (WGAN-GP only); set to `0.0` to skip |
 | `training.save_every` | `10` | Save checkpoint every N epochs |
 | `training.sample_every` | `5` | Save sample grid every N epochs |
 | `training.log_every` | `100` | Log to console every N batches |
 | `training.num_workers` | `4` | DataLoader worker processes |
+
+#### `configs/training/pix2pix_original.yaml` (pix2pix)
+
+| Key | Default | Description |
+|---|---|---|
+| `training.loss_type` | `bce` | Original pix2pix BCE loss |
+| `training.lambda_l1` | `100.0` | L1 pixel loss weight |
+| `training.lambda_vgg` | `0.0` | VGG disabled (not in original pix2pix) |
+| `training.lambda_fm` | `0.0` | Feature matching disabled |
+| `training.lambda_gp` | `0.0` | Gradient penalty disabled |
 
 #### `configs/data/sar_eo.yaml`
 
@@ -1016,14 +1147,26 @@ make prepare-data
 
 ### Step 1: train
 
+Two separate entry points correspond to the two conditional GAN variants:
+
+**Original pix2pix** — U-Net generator, single PatchGAN, BCE + L1:
+
 ```bash
 python scripts/train_pix2pix.py
+python scripts/train_pix2pix.py experiment_name=run1 training.epochs=50
 ```
 
-Outputs are written to `outputs/sar_eo_pix2pix/`:
+**pix2pixHD** — Coarse-to-fine generator, 3-scale PatchGAN, LSGAN + VGG + FM:
+
+```bash
+python scripts/train_pix2pixhd.py
+python scripts/train_pix2pixhd.py experiment_name=hd1 training.epochs=200
+```
+
+Outputs are written to `outputs/<experiment_name>/`:
 
 ```
-outputs/sar_eo_pix2pix/
+outputs/sar_eo_pix2pixhd/
 ├── train.log                        # Full debug log (rotates at 50 MB)
 ├── samples/
 │   ├── epoch_0000.png               # Grid: [SAR | fake EO | real EO]
@@ -1038,19 +1181,19 @@ outputs/sar_eo_pix2pix/
 ### Resume from checkpoint
 
 ```bash
-python scripts/train_pix2pix.py resume=outputs/sar_eo_pix2pix/checkpoints/epoch_0050.pt
+python scripts/train_pix2pixhd.py resume=outputs/sar_eo_pix2pixhd/checkpoints/epoch_0050.pt
 ```
 
 ### Named experiments
 
 ```bash
-python scripts/train_pix2pix.py \
-  experiment_name=run_hinge_3scale \
-  training.loss_type=hinge \
+python scripts/train_pix2pixhd.py \
+  experiment_name=run_lsgan_3scale \
+  training.loss_type=lsgan \
   model.discriminator.n_scales=3
 ```
 
-Each experiment gets its own output directory: `outputs/run_hinge_3scale/`.
+Each experiment gets its own output directory: `outputs/run_lsgan_3scale/`.
 
 ### Unconditional DCGAN
 
@@ -1096,23 +1239,25 @@ Saves a PNG grid to `outputs/generated/generated.png`.
 
 ## Experiment Tracking with MLflow
 
-Every training run automatically logs to MLflow:
+Every training run automatically logs to MLflow (no setup required — runs log to `sqlite:///mlflow.db` by default under MLflow 3.x).
 
-**Logged parameters:** model name, loss type, λ_L1, λ_VGG, λ_FM, number of discriminator scales, learning rates, batch size  
-**Logged metrics per epoch:** `d_loss`, `g_adv`, `g_l1`, `g_vgg`, `g_fm`
+**Logged parameters:** model name, loss type, λ_L1, λ_VGG, λ_FM, λ_GP, number of discriminator scales, learning rates, batch size  
+**Logged metrics per epoch:** `d_loss`, `g_adv`, `g_l1`, `g_vgg`, `g_fm`, `d_gp` (when WGAN-GP is active)
 
 ### Start the MLflow UI
 
 ```bash
-mlflow ui --port 5000
+make mlflow
+# equivalent to:
+mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
 # Then open http://localhost:5000
 ```
 
-Or set a remote tracking server:
+Or point at a remote tracking server:
 
 ```bash
 export MLFLOW_TRACKING_URI=http://your-mlflow-server:5000
-python scripts/train_pix2pix.py
+python scripts/train_pix2pixhd.py
 ```
 
 ---
@@ -1167,7 +1312,7 @@ CUDA_VISIBLE_DEVICES=0
 ## Running Tests
 
 ```bash
-# All tests (68 total)
+# All tests (103 total)
 pytest
 
 # Verbose output
@@ -1188,11 +1333,12 @@ pytest --cov=gan_pipeline --cov-report=term-missing
 
 | File | Tests | What's covered |
 |---|---|---|
-| `test_data.py` | 4 | Transform output shape (32/64/128), pixel range [-1, 1] |
-| `test_models.py` | 8 | DCGAN generator/discriminator shapes; BCE/Wasserstein/Hinge losses; gradient penalty; `sample()` |
-| `test_pix2pix.py` | 29 | U-Net output shape (1→3, 3→3, 1→1 ch); skip-connection gradients; PatchGAN patch map shape (~30×30), spectral norm on/off (weight_orig presence), and `forward_with_features` structure; multi-scale output lengths, decreasing spatial sizes, SN threading, and `forward_with_features` per scale; all loss types on multi-scale maps; VGG perceptual loss (1/3/4-channel inputs, zero on identical, offline weights_path); feature matching loss (scalar, finite, zero on identical); train step (hinge×3scale, bce×1scale, hinge×2scale); side-by-side dataset load and augmentation |
+| `test_data.py` | 12 | Transform shapes (32/64/128), pixel range [-1, 1]; side-by-side and separate-dir dataset formats; unknown-format error; `setup_logging` |
+| `test_models.py` | 8 | DCGAN generator/discriminator shapes; BCE/Wasserstein/Hinge/LSGAN losses; gradient penalty; `sample()` |
+| `test_pix2pix.py` | 41 | U-Net and CoarseToFineGenerator output shapes; skip-connection and coarse-to-fine gradient flow; GlobalUNetGenerator / LocalEnhancer shapes; PatchGAN spectral norm and `forward_with_features`; multi-scale output structure; all loss types; VGG perceptual loss; feature matching loss; WGAN-GP train step; pix2pix trainer steps (lsgan×2scale, bce×1scale, hinge×2scale), FM/VGG integration, resume, sample saving, and train loop |
+| `test_inference.py` | 6 | `load_generator` and `generate_images`; FID/IS ImportError path and success path (mocked torch-fidelity) |
 | `test_sentinel_utils.py` | 19 | `linear_to_db` correctness and zero-safety; SAR/EO normalization ranges and clipping; `make_sar_image` channel configs (1/3ch) and input layouts (CHW/HWC); `make_eo_image` shape; `is_valid_patch` NaN/zero rejection; `make_side_by_side` shape, broadcast, spatial mismatch error, SAR-on-left |
-| `test_training.py` | 2 | Checkpoint save/load round-trip; DCGAN trainer step (finite float losses) |
+| `test_training.py` | 6 | Checkpoint save/load round-trip; DCGAN trainer step; gradient penalty; resume; sample saving; train loop (MLflow mocked) |
 
 ### Makefile shortcuts
 
@@ -1222,6 +1368,20 @@ pre-commit run --all-files  # run all hooks manually
 ---
 
 ## Code Reference
+
+### Model hierarchy
+
+```
+BaseGenerator / BaseDiscriminator   (models/base.py — ABCs)
+  ├── UNetGenerator                 (models/unet.py — 8-level U-Net for pix2pix)
+  ├── CoarseToFineGenerator         (models/coarse_to_fine.py — pix2pixHD)
+  │     ├── GlobalUNetGenerator     (7-level U-Net at 128×128)
+  │     └── LocalEnhancer           (3-level at 256×256)
+  ├── DCGANGenerator                (models/dcgan.py — unconditional)
+  ├── PatchGANDiscriminator         (models/patchgan.py — 70×70 receptive field)
+  │     └── wrapped by MultiScaleDiscriminator  (models/multiscale_disc.py)
+  └── DCGANDiscriminator            (models/dcgan.py)
+```
 
 ### Adding a new model
 
@@ -1253,7 +1413,7 @@ Checkpoints are plain PyTorch `.pt` files:
     "discriminator": OrderedDict,   # discriminator.state_dict()
     "opt_g": dict,                  # optimizer state
     "opt_d": dict,
-    "metrics": {"d_loss": float, "g_adv": float, "g_l1": float, "g_vgg": float, "g_fm": float},
+    "metrics": {"d_loss": float, "g_adv": float, "g_l1": float, "g_vgg": float, "g_fm": float, "d_gp": float},
 }
 ```
 
