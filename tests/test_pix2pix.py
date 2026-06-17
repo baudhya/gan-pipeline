@@ -243,12 +243,53 @@ def test_pix2pix_train_step(
 
     sar = torch.randn(2, 1, 256, 256)
     eo = torch.randn(2, 3, 256, 256)
-    d_loss, g_adv, g_l1, g_vgg, g_fm = trainer._train_step(sar, eo)
+    d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = trainer._train_step(sar, eo)
 
-    assert all(isinstance(v, float) for v in [d_loss, g_adv, g_l1, g_vgg, g_fm])
-    assert all(not (v != v) for v in [d_loss, g_adv, g_l1, g_vgg, g_fm])  # no NaN
+    assert all(isinstance(v, float) for v in [d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp])
+    assert all(not (v != v) for v in [d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp])  # no NaN
     assert g_vgg == 0.0  # VGG disabled
     assert g_fm == 0.0  # FM disabled
+    assert d_gp == 0.0  # GP disabled (not wasserstein)
+
+
+def test_multiscale_gradient_penalty() -> None:
+    from gan_pipeline.models.losses import multiscale_gradient_penalty
+
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=3)
+    real = torch.randn(2, 4, 256, 256)
+    fake = torch.randn(2, 4, 256, 256)
+    gp = multiscale_gradient_penalty(d, real, fake)
+    assert gp.shape == torch.Size([])
+    assert torch.isfinite(gp)
+    assert gp.item() >= 0.0
+
+
+def test_pix2pix_train_step_wasserstein_gp(cfg, device: torch.device, tmp_path: Path) -> None:
+    import omegaconf
+
+    with omegaconf.open_dict(cfg):
+        cfg.output_dir = str(tmp_path)
+        cfg.training.loss_type = "wasserstein"
+        cfg.training.lambda_l1 = 100.0
+        cfg.training.lambda_vgg = 0.0
+        cfg.training.lambda_fm = 0.0
+        cfg.training.lambda_gp = 10.0
+        cfg.data.sar_channels = 1
+        cfg.data.eo_channels = 3
+
+    from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
+
+    g = UNetGenerator(in_channels=1, out_channels=3)
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=2)
+    trainer = Pix2PixTrainer(g, d, cfg, device, tmp_path)
+
+    sar = torch.randn(2, 1, 256, 256)
+    eo = torch.randn(2, 3, 256, 256)
+    d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = trainer._train_step(sar, eo)
+
+    assert all(isinstance(v, float) for v in [d_loss, g_adv, g_l1, d_gp])
+    assert all(not (v != v) for v in [d_loss, g_adv, g_l1, d_gp])  # no NaN
+    assert d_gp > 0.0  # GP was computed
 
 
 # --- Paired dataset ---

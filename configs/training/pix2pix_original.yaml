@@ -8,6 +8,7 @@ loss_type: bce        # original pix2pix used BCE/log loss
 lambda_l1: 100.0
 lambda_vgg: 0.0       # no perceptual loss in original pix2pix
 lambda_fm: 0.0        # no feature matching in original pix2pix
+lambda_gp: 0.0        # no gradient penalty in original pix2pix
 save_every: 10
 sample_every: 5
 log_every: 100

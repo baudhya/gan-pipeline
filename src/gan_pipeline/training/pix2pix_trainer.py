@@ -15,6 +15,7 @@ from gan_pipeline.models.losses import (
     feature_matching_loss,
     multiscale_discriminator_loss,
     multiscale_generator_loss,
+    multiscale_gradient_penalty,
 )
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
 from gan_pipeline.utils.checkpointing import load_checkpoint, save_checkpoint
@@ -53,6 +54,7 @@ class Pix2PixTrainer:
             else None
         )
         self.lambda_fm: float = float(cfg.training.get("lambda_fm", 0.0))
+        self.lambda_gp: float = float(cfg.training.get("lambda_gp", 0.0))
 
         self.opt_g = torch.optim.Adam(
             generator.parameters(),
@@ -83,7 +85,7 @@ class Pix2PixTrainer:
 
     def _train_step(
         self, sar: torch.Tensor, eo: torch.Tensor
-    ) -> tuple[float, float, float, float, float]:
+    ) -> tuple[float, float, float, float, float, float]:
         sar = sar.to(self.device)
         eo = eo.to(self.device)
 
@@ -97,6 +99,12 @@ class Pix2PixTrainer:
         fake_maps = self.discriminator(fake_pair)
 
         d_loss = multiscale_discriminator_loss(real_maps, fake_maps, self.loss_type)
+
+        d_gp_val = 0.0
+        if self.loss_type == LossType.WASSERSTEIN and self.lambda_gp > 0:
+            gp = multiscale_gradient_penalty(self.discriminator, real_pair, fake_pair)
+            d_loss = d_loss + self.lambda_gp * gp
+            d_gp_val = gp.item()
 
         self.opt_d.zero_grad()
         d_loss.backward()  # type: ignore[no-untyped-call]
@@ -133,7 +141,7 @@ class Pix2PixTrainer:
         g_loss.backward()  # type: ignore[no-untyped-call]
         self.opt_g.step()
 
-        return d_loss.item(), g_adv.item(), g_l1.item(), g_vgg_val, g_fm_val
+        return d_loss.item(), g_adv.item(), g_l1.item(), g_vgg_val, g_fm_val, d_gp_val
 
     def _save_samples(self, epoch: int) -> None:
         assert self.fixed_sar is not None and self.fixed_eo is not None
@@ -171,6 +179,7 @@ class Pix2PixTrainer:
                     "lambda_l1": self.lambda_l1,
                     "lambda_vgg": self.lambda_vgg,
                     "lambda_fm": self.lambda_fm,
+                    "lambda_gp": self.lambda_gp,
                     "n_scales": n_scales,
                     "lr_g": self.cfg.training.lr_generator,
                     "lr_d": self.cfg.training.lr_discriminator,
@@ -187,6 +196,7 @@ class Pix2PixTrainer:
                 g_l1_losses: list[float] = []
                 g_vgg_losses: list[float] = []
                 g_fm_losses: list[float] = []
+                d_gp_losses: list[float] = []
 
                 for i, batch in enumerate(dataloader):
                     sar: torch.Tensor = batch["sar"]
@@ -196,19 +206,21 @@ class Pix2PixTrainer:
                         self.fixed_sar = sar[:8].to(self.device)
                         self.fixed_eo = eo[:8].to(self.device)
 
-                    d_loss, g_adv, g_l1, g_vgg, g_fm = self._train_step(sar, eo)
+                    d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = self._train_step(sar, eo)
                     d_losses.append(d_loss)
                     g_adv_losses.append(g_adv)
                     g_l1_losses.append(g_l1)
                     g_vgg_losses.append(g_vgg)
                     g_fm_losses.append(g_fm)
+                    d_gp_losses.append(d_gp)
 
                     if i % self.cfg.training.log_every == 0:
                         logger.info(
                             f"Epoch {epoch}/{self.cfg.training.epochs} "
                             f"[{i}/{len(dataloader)}] "
                             f"D: {d_loss:.4f}  G_adv: {g_adv:.4f}  "
-                            f"G_L1: {g_l1:.4f}  G_VGG: {g_vgg:.4f}  G_FM: {g_fm:.4f}"
+                            f"G_L1: {g_l1:.4f}  G_VGG: {g_vgg:.4f}  G_FM: {g_fm:.4f}  "
+                            f"D_GP: {d_gp:.4f}"
                         )
 
                 avg_d = sum(d_losses) / len(d_losses)
@@ -216,6 +228,7 @@ class Pix2PixTrainer:
                 avg_g_l1 = sum(g_l1_losses) / len(g_l1_losses)
                 avg_g_vgg = sum(g_vgg_losses) / len(g_vgg_losses)
                 avg_g_fm = sum(g_fm_losses) / len(g_fm_losses)
+                avg_d_gp = sum(d_gp_losses) / len(d_gp_losses)
 
                 mlflow.log_metrics(
                     {
@@ -224,6 +237,7 @@ class Pix2PixTrainer:
                         "g_l1": avg_g_l1,
                         "g_vgg": avg_g_vgg,
                         "g_fm": avg_g_fm,
+                        "d_gp": avg_d_gp,
                     },
                     step=epoch,
                 )

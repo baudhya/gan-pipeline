@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import torchvision.models
 
 from gan_pipeline.models.base import BaseDiscriminator
+from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
 
 
 class LossType(str, Enum):
@@ -133,6 +134,34 @@ class VGGPerceptualLoss(nn.Module):
             real_p = slice_(real_p)
             loss = loss + F.l1_loss(fake_p, real_p)
         return loss
+
+
+def multiscale_gradient_penalty(
+    discriminator: MultiScaleDiscriminator,
+    real_pair: torch.Tensor,
+    fake_pair: torch.Tensor,
+) -> torch.Tensor:
+    """WGAN-GP gradient penalty averaged across all discriminator scales.
+
+    Computes per-scale GP using the same interpolated input at each resolution,
+    then averages — so each scale's Lipschitz constraint is enforced independently.
+    """
+    batch = real_pair.size(0)
+    alpha = torch.rand(batch, 1, 1, 1, device=real_pair.device)
+    interp = (alpha * real_pair + (1 - alpha) * fake_pair.detach()).requires_grad_(True)
+    logits = discriminator(interp)  # list[Tensor], finest → coarsest
+
+    gp_per_scale: list[torch.Tensor] = []
+    for logit in logits:
+        grads = torch.autograd.grad(
+            outputs=logit.sum(),
+            inputs=interp,
+            create_graph=True,
+            retain_graph=True,  # keep activations alive until d_loss.backward() frees them
+        )[0]
+        gp_per_scale.append(((grads.view(batch, -1).norm(2, dim=1) - 1) ** 2).mean())
+
+    return torch.stack(gp_per_scale).mean()
 
 
 def gradient_penalty(

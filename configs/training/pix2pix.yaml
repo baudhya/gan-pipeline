@@ -9,6 +9,7 @@ lambda_l1: 100.0
 lambda_vgg: 10.0
 vgg_weights_path: weights/vgg16-397923af.pth   # run `make download-weights` once to populate; set to null to download on first use instead
 lambda_fm: 10.0
+lambda_gp: 10.0       # gradient penalty weight; only applied when loss_type=wasserstein
 save_every: 10
 sample_every: 5
 log_every: 100
