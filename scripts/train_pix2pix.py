@@ -32,7 +32,11 @@ def main(cfg: DictConfig) -> None:
     setup_logging(output_dir)
     set_seed(cfg.seed)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    _device_cfg: str = cfg.get("device", "auto")
+    if _device_cfg == "auto":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device(_device_cfg)
     logger.info(f"Device: {device}")
 
     train_loader = get_paired_dataloader(

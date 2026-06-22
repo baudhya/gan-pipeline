@@ -9,3 +9,4 @@ experiment_name: sar_eo_pix2pixhd
 seed: 42
 output_dir: outputs/${experiment_name}
 resume: null
+device: auto   # auto | cpu | cuda
