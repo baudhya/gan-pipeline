@@ -1,8 +1,9 @@
 name: pix2pixhd
 generator:
-  base_features: 64
-  local_base_features: 32   # LocalEnhancer channel width
+  ngf: 64             # base channel width
+  n_downsampling: 3   # encoder depth: 256→128→64→32 bottleneck
+  n_blocks: 9         # ResNet residual blocks (paper specifies 9)
 discriminator:
   base_features: 64
-  n_scales: 3       # number of PatchGAN scales (1 = single-scale)
-  spectral_norm: true
+  n_scales: 3         # 3-scale PatchGAN as in paper
+  spectral_norm: true # spectral norm on D as in paper

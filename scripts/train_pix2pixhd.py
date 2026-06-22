@@ -10,8 +10,8 @@ from loguru import logger
 from omegaconf import DictConfig
 
 from gan_pipeline.data.paired_dataset import get_paired_dataloader
-from gan_pipeline.models.coarse_to_fine import CoarseToFineGenerator
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
+from gan_pipeline.models.resnet_gen import ResNetGenerator
 from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
 from gan_pipeline.utils import setup_logging
 
@@ -48,11 +48,12 @@ def main(cfg: DictConfig) -> None:
     )
     logger.info(f"Train set: {len(train_loader.dataset)} pairs")
 
-    generator = CoarseToFineGenerator(
+    generator = ResNetGenerator(
         in_channels=cfg.data.sar_channels,
         out_channels=cfg.data.eo_channels,
-        base_features=cfg.model.generator.base_features,
-        local_base_features=cfg.model.generator.local_base_features,
+        ngf=cfg.model.generator.ngf,
+        n_downsampling=cfg.model.generator.n_downsampling,
+        n_blocks=cfg.model.generator.n_blocks,
     )
     discriminator = MultiScaleDiscriminator(
         sar_channels=cfg.data.sar_channels,
