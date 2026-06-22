@@ -32,9 +32,11 @@ def discriminator_loss(
     real_logits: torch.Tensor,
     fake_logits: torch.Tensor,
     loss_type: LossType,
+    label_smoothing: float = 1.0,
 ) -> torch.Tensor:
     if loss_type == LossType.BCE:
-        real_loss = F.binary_cross_entropy_with_logits(real_logits, torch.ones_like(real_logits))
+        real_targets = torch.full_like(real_logits, label_smoothing)
+        real_loss = F.binary_cross_entropy_with_logits(real_logits, real_targets)
         fake_loss = F.binary_cross_entropy_with_logits(fake_logits, torch.zeros_like(fake_logits))
         return (real_loss + fake_loss) / 2
     if loss_type == LossType.WASSERSTEIN:
@@ -42,8 +44,9 @@ def discriminator_loss(
     if loss_type == LossType.HINGE:
         return F.relu(1.0 - real_logits).mean() + F.relu(1.0 + fake_logits).mean()
     if loss_type == LossType.LSGAN:
+        real_targets = torch.full_like(real_logits, label_smoothing)
         return 0.5 * (
-            F.mse_loss(real_logits, torch.ones_like(real_logits))
+            F.mse_loss(real_logits, real_targets)
             + F.mse_loss(fake_logits, torch.zeros_like(fake_logits))
         )
     raise ValueError(f"Unknown loss type: {loss_type}")
@@ -53,9 +56,12 @@ def multiscale_discriminator_loss(
     real_list: list[torch.Tensor],
     fake_list: list[torch.Tensor],
     loss_type: LossType,
+    label_smoothing: float = 1.0,
 ) -> torch.Tensor:
     """Average discriminator loss across all scales."""
-    losses = [discriminator_loss(r, f, loss_type) for r, f in zip(real_list, fake_list)]
+    losses = [
+        discriminator_loss(r, f, loss_type, label_smoothing) for r, f in zip(real_list, fake_list)
+    ]
     return torch.stack(losses).mean()
 
 
@@ -168,6 +174,31 @@ def multiscale_gradient_penalty(
             retain_graph=True,  # keep activations alive until d_loss.backward() frees them
         )[0]
         gp_per_scale.append(((grads.view(batch, -1).norm(2, dim=1) - 1) ** 2).mean())
+
+    return torch.stack(gp_per_scale).mean()
+
+
+def r1_gradient_penalty(
+    discriminator: MultiScaleDiscriminator,
+    real_pair: torch.Tensor,
+) -> torch.Tensor:
+    """R1 regularization: penalizes the squared gradient norm at real samples.
+
+    Prevents D from becoming arbitrarily sharp near real data without constraining
+    it on fakes (unlike WGAN-GP). Effective for BCE, LSGAN, and hinge losses.
+    """
+    real_rg = real_pair.detach().requires_grad_(True)
+    real_maps = discriminator(real_rg)
+
+    gp_per_scale: list[torch.Tensor] = []
+    for logit in real_maps:
+        grads = torch.autograd.grad(
+            outputs=logit.sum(),
+            inputs=real_rg,
+            create_graph=True,
+            retain_graph=True,
+        )[0]
+        gp_per_scale.append(grads.pow(2).view(grads.size(0), -1).sum(dim=1).mean())
 
     return torch.stack(gp_per_scale).mean()
 

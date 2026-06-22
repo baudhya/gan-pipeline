@@ -10,7 +10,9 @@ from gan_pipeline.models.losses import (
     discriminator_loss,
     generator_loss,
     gradient_penalty,
+    r1_gradient_penalty,
 )
+from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
 from gan_pipeline.models.resnet_gen import ResnetBlock, ResNetGenerator
 
 
@@ -52,6 +54,25 @@ def test_gradient_penalty() -> None:
     )
     assert gp.shape == torch.Size([])
     assert torch.isfinite(gp)
+
+
+@pytest.mark.parametrize("loss_type", [LossType.BCE, LossType.LSGAN])
+def test_discriminator_loss_label_smoothing(loss_type: LossType) -> None:
+    real = torch.ones(8) * 2.0  # large positive logits → D confident on reals
+    fake = torch.ones(8) * -2.0
+    loss_smooth = discriminator_loss(real, fake, loss_type, label_smoothing=0.9)
+    loss_hard = discriminator_loss(real, fake, loss_type, label_smoothing=1.0)
+    # smoothed real target (0.9) gives higher loss than hard target (1.0) when D is confident
+    assert loss_smooth > loss_hard
+
+
+def test_r1_gradient_penalty() -> None:
+    disc = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
+    real_pair = torch.randn(1, 4, 64, 64)  # sar(1) + eo(3) = 4 channels
+    gp = r1_gradient_penalty(disc, real_pair)
+    assert gp.shape == torch.Size([])
+    assert torch.isfinite(gp)
+    assert gp >= 0
 
 
 def test_generator_sample() -> None:

@@ -18,6 +18,7 @@ from gan_pipeline.models.losses import (
     multiscale_discriminator_loss,
     multiscale_generator_loss,
     multiscale_gradient_penalty,
+    r1_gradient_penalty,
 )
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
 from gan_pipeline.utils.checkpointing import load_checkpoint, save_checkpoint
@@ -66,6 +67,7 @@ class Pix2PixTrainer:
         )
         self.lambda_fm: float = float(cfg.training.get("lambda_fm", 0.0))
         self.lambda_gp: float = float(cfg.training.get("lambda_gp", 0.0))
+        self.label_smoothing: float = float(cfg.training.get("label_smoothing", 1.0))
 
         self.opt_g = torch.optim.Adam(
             generator.parameters(),
@@ -118,12 +120,19 @@ class Pix2PixTrainer:
         real_maps = self.discriminator(real_pair)  # list[Tensor]
         fake_maps = self.discriminator(fake_pair)
 
-        d_loss = multiscale_discriminator_loss(real_maps, fake_maps, self.loss_type)
+        d_loss = multiscale_discriminator_loss(
+            real_maps, fake_maps, self.loss_type, self.label_smoothing
+        )
 
         d_gp_val = 0.0
-        if self.loss_type == LossType.WASSERSTEIN and self.lambda_gp > 0:
-            gp = multiscale_gradient_penalty(self.discriminator, real_pair, fake_pair)
-            d_loss = d_loss + self.lambda_gp * gp
+        if self.lambda_gp > 0:
+            if self.loss_type == LossType.WASSERSTEIN:
+                gp = multiscale_gradient_penalty(self.discriminator, real_pair, fake_pair)
+                d_loss = d_loss + self.lambda_gp * gp
+            else:
+                # R1 regularization for BCE / LSGAN / hinge
+                gp = r1_gradient_penalty(self.discriminator, real_pair)
+                d_loss = d_loss + (self.lambda_gp / 2) * gp
             d_gp_val = gp.item()
 
         self.opt_d.zero_grad()

@@ -1,10 +1,11 @@
 epochs: 200
 batch_size: 1
 lr_generator: 0.0002
-lr_discriminator: 0.0002
+lr_discriminator: 0.0001  # TTUR: D learns slower than G to prevent collapse
 beta1: 0.5
 beta2: 0.999
 loss_type: lsgan      # paper uses LSGAN (least-squares adversarial loss)
+label_smoothing: 1.0  # no smoothing needed for LSGAN (already stable)
 lambda_l1: 0.0        # pix2pixHD does not use pixel-wise L1
 lambda_vgg: 10.0      # VGG perceptual loss weight (paper: 10)
 vgg_weights_path: weights/vgg16-397923af.pth

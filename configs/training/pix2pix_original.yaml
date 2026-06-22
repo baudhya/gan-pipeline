@@ -1,14 +1,15 @@
 epochs: 200
 batch_size: 1
 lr_generator: 0.0002
-lr_discriminator: 0.0002
+lr_discriminator: 0.0001  # TTUR: D learns slower than G to prevent collapse
 beta1: 0.5
 beta2: 0.999
 loss_type: bce        # original pix2pix used BCE/log loss
+label_smoothing: 0.9  # one-sided smoothing: real targets 0.9 instead of 1.0
 lambda_l1: 100.0
 lambda_vgg: 0.0       # no perceptual loss in original pix2pix
 lambda_fm: 0.0        # no feature matching in original pix2pix
-lambda_gp: 0.0        # no gradient penalty in original pix2pix
+lambda_gp: 10.0       # R1 gradient penalty weight (prevents D from sharpening on reals)
 save_every: 10
 sample_every: 5
 log_every: 100
