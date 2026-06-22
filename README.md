@@ -7,7 +7,7 @@
 Production-grade SAR→EO image translation pipeline with two conditional GAN variants and an unconditional DCGAN:
 
 - **pix2pix** — U-Net generator, single PatchGAN discriminator, BCE + L1 loss (Isola et al., 2017)
-- **pix2pixHD** — Coarse-to-fine generator (GlobalUNet + LocalEnhancer), multi-scale PatchGAN (3 scales), LSGAN + L1 + VGG perceptual + feature matching losses (Wang et al., 2018)
+- **pix2pixHD** — ResNet global generator (9 residual blocks, reflection padding), 3-scale PatchGAN, LSGAN + VGG perceptual + feature matching losses (Wang et al., 2018)
 - **DCGAN** — unconditional generation from latent vectors
 
 ---
@@ -17,7 +17,7 @@ Production-grade SAR→EO image translation pipeline with two conditional GAN va
 1. [Overview](#overview)
 2. [Architecture](#architecture)
    - [U-Net Generator](#u-net-generator)
-   - [Coarse-to-Fine Generator (pix2pixHD)](#coarse-to-fine-generator-pix2pixhd)
+   - [ResNet Generator (pix2pixHD)](#resnet-generator-pix2pixhd)
    - [Multi-Scale PatchGAN Discriminator](#multi-scale-patchgan-discriminator)
    - [Loss Functions](#loss-functions)
 3. [Project Structure](#project-structure)
@@ -57,7 +57,7 @@ Pix2pix is the standard conditional image-to-image translation framework. Unlike
 - Experiment tracking via [MLflow](https://mlflow.org/) out of the box
 - Multi-scale discriminator for both local texture and global structure discrimination
 - Synchronized data augmentation across SAR/EO pairs
-- 103 passing tests with parametrized coverage of shapes, loss types, and scales
+- 117 passing tests with parametrized coverage of shapes, loss types, and scales
 - Docker + docker-compose for reproducible deployment
 - GitHub Actions CI pipeline (lint → typecheck → test)
 
@@ -117,69 +117,46 @@ Input SAR  (1 or 3 ch, 256×256)
 
 ---
 
-### Coarse-to-Fine Generator (pix2pixHD)
+### ResNet Generator (pix2pixHD)
 
-**File:** `src/gan_pipeline/models/coarse_to_fine.py`  
-**Classes:** `GlobalUNetGenerator`, `LocalEnhancer`, `CoarseToFineGenerator`
+**File:** `src/gan_pipeline/models/resnet_gen.py`  
+**Classes:** `ResNetGenerator`, `ResnetBlock`
 
-The pix2pixHD generator is split into two cascaded stages. Each stage is a U-Net style encoder-decoder; together they process the image at two resolutions.
-
-#### Stage 1 — GlobalUNetGenerator (128×128)
-
-A 7-level U-Net that receives a 2× downsampled version of the SAR input (128×128 for 256×256 training data) and produces a coarse EO prediction at half resolution.
+The pix2pixHD paper (Wang et al., 2018) specifies a **ResNet-based global generator**, implemented here faithfully. Reflection padding is used throughout to eliminate zero-padding border artefacts.
 
 ```
-Input SAR (2× downsampled, 128×128)
+Input SAR  (1 or 3 ch, 256×256)
      │
-  enc1: (in_ch → bf,    128→64)   no BatchNorm
-  enc2: (bf   → bf×2,   64→32)
-  enc3: (bf×2 → bf×4,   32→16)
-  enc4: (bf×4 → bf×8,   16→8)
-  enc5: (bf×8 → bf×8,    8→4)
-  enc6: (bf×8 → bf×8,    4→2)
-  enc7: (bf×8 → bf×8,    2→1)    no BatchNorm (bottleneck)
+  ReflectPad(3) → Conv(7×7, ngf)  → GroupNorm → ReLU     [initial projection]
      │
-  dec1: (bf×8  → bf×8,   1→2)    Dropout 0.5  + skip e6
-  dec2: (bf×16 → bf×8,   2→4)    Dropout 0.5  + skip e5
-  dec3: (bf×16 → bf×8,   4→8)    Dropout 0.5  + skip e4
-  dec4: (bf×16 → bf×4,   8→16)               + skip e3
-  dec5: (bf×8  → bf×2,  16→32)               + skip e2
-  dec6: (bf×4  → bf,    32→64)               + skip e1
-  out:  ConvT(bf×2 → out_ch, 64→128)  Tanh
+  [× n_downsampling=3 encoder blocks]
+  Conv(3×3, s=2, ngf×2^i)  → GroupNorm → ReLU            [256→128→64→32]
      │
-  Coarse EO (128×128, range [-1, 1])
+  [× n_blocks=9 residual blocks at bottleneck (ngf×8 = 512 ch)]
+  ReflectPad(1) → Conv(3×3) → GroupNorm → ReLU
+  ReflectPad(1) → Conv(3×3) → GroupNorm
+  + residual skip (x + block(x))
+     │
+  [× n_downsampling=3 decoder blocks]
+  ConvTranspose(3×3, s=2, ngf×2^(n-i)) → GroupNorm → ReLU  [32→64→128→256]
+     │
+  ReflectPad(3) → Conv(7×7, out_ch) → Tanh               [output projection]
+     │
+  Output EO  (3 ch, 256×256, range [-1, 1])
 ```
 
-#### Stage 2 — LocalEnhancer (256×256)
+**Default config for 256×256:** `ngf=64`, `n_downsampling=3`, `n_blocks=9` (paper values).  
+Bottleneck feature map: `32×32×512` (ngf × 2^n_downsampling).
 
-A 3-level encoder-decoder that receives the full-resolution SAR image concatenated channel-wise with the bilinearly upsampled coarse prediction from Stage 1 (`in_channels = sar_ch + eo_ch`).
+**Key design choices:**
+- Reflection padding on all convolutions — no zero-padding artefacts at borders
+- `GroupNorm(min(32, ch), ch)` throughout — stable at `batch_size=1` (InstanceNorm has missing CPU kernels at small spatial sizes; BatchNorm is unstable at batch=1)
+- 9 residual blocks at the bottleneck give the generator capacity to learn complex SAR→EO mappings at full spatial resolution before upsampling
+- All weights initialized from `N(0, 0.02)` following pix2pixHD convention
 
-```
-Input: cat([SAR_256, coarse_up_256])   (sar_ch + eo_ch channels)
-     │
-  enc1: (in_ch → lbf,    256→128)   no BatchNorm
-  enc2: (lbf   → lbf×2,  128→64)
-  enc3: (lbf×2 → lbf×4,   64→32)
-     │
-  dec1: (lbf×4 → lbf×2,   32→64)               + skip e2
-  dec2: (lbf×4 → lbf,      64→128)              + skip e1
-  out:  ConvT(lbf×2 → out_ch, 128→256)  Tanh
-     │
-  Final EO (256×256, range [-1, 1])
-```
+**Parameter count (default config):** ~54 million
 
-#### CoarseToFineGenerator — forward pass
-
-```python
-x_low   = avg_pool2d(x, kernel_size=2, stride=2)     # 256→128
-coarse  = global_generator(x_low)                    # 128×128 EO
-coarse_up = interpolate(coarse, size=x.shape[2:],    # upsample to 256
-                        mode="bilinear")
-output  = local_enhancer(cat([x, coarse_up], dim=1)) # 256×256 EO
-```
-
-**Default channel widths:** `base_features=64` (global stage), `local_base_features=32` (local stage).  
-Unlike the original pix2pixHD paper (which uses ResNet-based generators), both stages use U-Net encoder-decoders, consistent with the project's pix2pix backbone.
+The legacy `CoarseToFineGenerator` (`models/coarse_to_fine.py`) is retained for backward compatibility with older checkpoints but is no longer the default for new pix2pixHD runs.
 
 ---
 
@@ -314,7 +291,20 @@ L_G = −mean(fake_logits)
 
 Use with `lambda_gp > 0` to enforce the Lipschitz constraint via gradient penalty (see below). Without GP, the discriminator is unconstrained and training can diverge.
 
-#### Gradient Penalty (WGAN-GP)
+#### Label Smoothing
+
+Controlled by `training.label_smoothing` (default `1.0` = no smoothing).
+
+For BCE and LSGAN, real targets are replaced with `label_smoothing` instead of hard `1.0`:
+
+```
+real_targets = full_like(real_logits, label_smoothing)   # e.g. 0.9 instead of 1.0
+L_D_real = BCE(real_logits, real_targets)                # or MSE for LSGAN
+```
+
+Setting `label_smoothing: 0.9` (recommended for BCE) prevents D from becoming overconfident on real samples early in training, which would drive its loss to zero and cut off the gradient signal to G. Has no effect for hinge or Wasserstein losses (which use no explicit targets).
+
+#### Gradient Penalty — WGAN-GP
 
 **Function:** `multiscale_gradient_penalty` in `src/gan_pipeline/models/losses.py`
 
@@ -326,22 +316,41 @@ GP = E[(‖∇_{x̂} D(x̂)‖₂ − 1)²]                        averaged acro
 L_D_total = L_D_wgan + λ_GP · GP
 ```
 
-The penalty is computed separately for each discriminator scale and averaged. All `autograd.grad` calls use `retain_graph=True` because `d_loss.backward()` must differentiate through the second-order GP graph, which references the discriminator's forward-pass activations from the GP run. Freeing them early with `retain_graph=False` causes a `RuntimeError: Trying to backward through the graph a second time`.
+The penalty is computed separately for each discriminator scale and averaged. `autograd.grad` uses `create_graph=True` so `d_loss.backward()` can differentiate through the second-order GP graph.
 
 ```bash
-# Enable WGAN-GP training
 python scripts/train_pix2pix.py training.loss_type=wasserstein training.lambda_gp=10.0
+```
+
+#### Gradient Penalty — R1 Regularization
+
+**Function:** `r1_gradient_penalty` in `src/gan_pipeline/models/losses.py`
+
+Applied automatically for **BCE, LSGAN, and hinge** losses when `training.lambda_gp > 0`.
+
+```
+R1 = E[‖∇_{x_real} D(x_real)‖²]        gradient norm at real samples only
+L_D_total = L_D + (λ_GP / 2) · R1
+```
+
+Unlike WGAN-GP (which penalizes at interpolated samples between real and fake), R1 penalizes the squared gradient magnitude only at real data points. This prevents D from sharpening its decision boundary arbitrarily near real samples without constraining its behavior on fakes.
+
+```bash
+# R1 is automatically used for BCE/LSGAN/hinge — just set lambda_gp
+python scripts/train_pix2pix.py training.loss_type=bce training.lambda_gp=10.0
+python scripts/train_pix2pixhd.py training.loss_type=lsgan training.lambda_gp=10.0
 ```
 
 #### Multi-Scale Wrappers
 
 ```python
-multiscale_discriminator_loss(real_maps_list, fake_maps_list, loss_type)
+multiscale_discriminator_loss(real_maps_list, fake_maps_list, loss_type, label_smoothing=1.0)
 multiscale_generator_loss(fake_maps_list, loss_type)
-multiscale_gradient_penalty(discriminator, real_pair, fake_pair)
+multiscale_gradient_penalty(discriminator, real_pair, fake_pair)   # WGAN-GP
+r1_gradient_penalty(discriminator, real_pair)                      # R1 for BCE/LSGAN/hinge
 ```
 
-The first two take the list of patch maps from `MultiScaleDiscriminator.forward()` and return a single scalar — the mean loss across all scales. `multiscale_gradient_penalty` takes the full discriminator module and the concatenated `cat([sar, eo])` pair tensors.
+The first two take the list of patch maps from `MultiScaleDiscriminator.forward()` and return a single scalar — the mean loss across all scales. `multiscale_gradient_penalty` and `r1_gradient_penalty` take the full discriminator module and the concatenated `cat([sar, eo])` pair tensors.
 
 #### VGG Perceptual Loss
 
@@ -405,12 +414,12 @@ Real features are detached so gradients only flow through the fake path to updat
 L_G_total = L_G_adv + λ_L1 × L1(fake_EO, real_EO) + λ_VGG × L_VGG(fake_EO, real_EO) + λ_FM × L_FM
 ```
 
-| Term | Default weight | Role |
-|---|---|---|
-| `L_G_adv` | 1.0 | Adversarial sharpness signal from multi-scale discriminator |
-| `λ_L1 × L1` | 100.0 | Low-frequency fidelity; anchors color and structure |
-| `λ_VGG × L_VGG` | 10.0 | Perceptual texture quality; reduces checkerboard and blurry artifacts |
-| `λ_FM × L_FM` | 10.0 | Discriminator feature alignment; stabilises training and improves fine detail |
+| Term | pix2pix default | pix2pixHD default | Role |
+|---|---|---|---|
+| `L_G_adv` | 1.0 | 1.0 | Adversarial sharpness signal from multi-scale discriminator |
+| `λ_L1 × L1` | **100.0** | **0.0** | Low-frequency fidelity; anchors color and structure. Disabled in pix2pixHD (paper uses FM+VGG instead) |
+| `λ_VGG × L_VGG` | 0.0 | 10.0 | Perceptual texture quality; reduces checkerboard and blurry artifacts |
+| `λ_FM × L_FM` | 0.0 | 10.0 | Discriminator feature alignment; stabilises training and improves fine detail |
 
 ---
 
@@ -430,10 +439,11 @@ gan-pipeline/
 │   │   ├── base.py                 # BaseGenerator, BaseDiscriminator ABCs
 │   │   ├── dcgan.py                # DCGAN generator + discriminator (unconditional)
 │   │   ├── unet.py                 # 8-level U-Net generator (pix2pix)
-│   │   ├── coarse_to_fine.py       # GlobalUNetGenerator + LocalEnhancer + CoarseToFineGenerator (pix2pixHD)
+│   │   ├── resnet_gen.py           # ResNet global generator (pix2pixHD — paper-faithful)
+│   │   ├── coarse_to_fine.py       # Legacy coarse-to-fine generator (kept for checkpoint compat)
 │   │   ├── patchgan.py             # 70×70 PatchGAN discriminator
 │   │   ├── multiscale_disc.py      # Multi-scale PatchGAN wrapper
-│   │   └── losses.py               # BCE, Hinge, LSGAN, Wasserstein+GP; multi-scale helpers
+│   │   └── losses.py               # BCE, Hinge, LSGAN, Wasserstein+GP, R1; multi-scale helpers
 │   │
 │   ├── training/
 │   │   ├── trainer.py              # GANTrainer — unconditional DCGAN training loop
@@ -462,7 +472,8 @@ gan-pipeline/
 │   │   ├── pix2pix_original.yaml   # pix2pix hyperparameters (BCE, L1 only)
 │   │   └── default.yaml            # DCGAN hyperparameters
 │   └── data/
-│       ├── sar_eo.yaml             # SAR→EO dataset (DEFAULT)
+│       ├── sar_eo.yaml             # SAR→EO side-by-side dataset (DEFAULT)
+│       ├── sentinel.yaml           # Sentinel-1/2 category folder dataset (sentinal/v_2/)
 │       └── celeba.yaml             # CelebA (DCGAN example)
 │
 ├── scripts/
@@ -800,6 +811,27 @@ data/sar_eo/
 ├── valA/ …  valB/ …
 ```
 
+**Format 3: Sentinel category folders** (`dataset_format: sentinel_s1s2`)
+
+The native layout of the `sentinal/v_2/` dataset. Each land-cover category has an `s1/` and `s2/` subdirectory; files are paired by replacing `_s1_` → `_s2_` in the filename. A deterministic 90/10 train/val split is applied using `random.Random(42)`.
+
+```
+sentinal/v_2/
+├── category_A/
+│   ├── s1/img_001_s1_patch.png   # SAR
+│   └── s2/img_001_s2_patch.png   # EO (paired by name substitution)
+├── category_B/
+│   ├── s1/ …
+│   └── s2/ …
+└── …
+```
+
+Select this format with:
+```bash
+python scripts/train_pix2pix.py data=sentinel
+python scripts/train_pix2pixhd.py data=sentinel
+```
+
 **SAR channel config** (`data.sar_channels`):
 
 | Value | Description |
@@ -1027,8 +1059,9 @@ python scripts/train.py model=dcgan training=default data=celeba
 
 | Key | Default | Description |
 |---|---|---|
-| `model.generator.base_features` | `64` | GlobalUNetGenerator channel width; doubled at each encoder level |
-| `model.generator.local_base_features` | `32` | LocalEnhancer channel width |
+| `model.generator.ngf` | `64` | Base channel width; doubles after each encoder block |
+| `model.generator.n_downsampling` | `3` | Encoder depth — 256→32 bottleneck at n=3 |
+| `model.generator.n_blocks` | `9` | ResNet residual blocks at bottleneck (paper value) |
 | `model.discriminator.base_features` | `64` | Base channel count for each PatchGAN |
 | `model.discriminator.n_scales` | `3` | Number of discriminator scales |
 | `model.discriminator.spectral_norm` | `true` | Apply spectral norm to all D conv layers |
@@ -1049,15 +1082,16 @@ python scripts/train.py model=dcgan training=default data=celeba
 | `training.epochs` | `200` | Total training epochs |
 | `training.batch_size` | `1` | Batch size (pix2pixHD uses 1) |
 | `training.lr_generator` | `0.0002` | Generator Adam learning rate |
-| `training.lr_discriminator` | `0.0002` | Discriminator Adam learning rate |
+| `training.lr_discriminator` | `0.0001` | Discriminator Adam learning rate (TTUR: D learns slower than G) |
 | `training.beta1` | `0.5` | Adam β₁ (lower than default 0.9 for GAN stability) |
 | `training.beta2` | `0.999` | Adam β₂ |
 | `training.loss_type` | `lsgan` | Loss function: `lsgan`, `hinge`, `bce`, or `wasserstein` |
-| `training.lambda_l1` | `100.0` | Weight of pixel-level L1 loss term |
+| `training.label_smoothing` | `1.0` | Real target value for D (0.9 = one-sided smoothing; 1.0 = no smoothing) |
+| `training.lambda_l1` | `0.0` | L1 pixel loss weight — **disabled** for pix2pixHD (paper uses FM+VGG) |
 | `training.lambda_vgg` | `10.0` | Weight of VGG perceptual loss; set to `0.0` to disable |
 | `training.vgg_weights_path` | `weights/vgg16-397923af.pth` | Local path to VGG16 weights; run `make download-weights` once; `null` = auto-download |
 | `training.lambda_fm` | `10.0` | Weight of feature matching loss; set to `0.0` to disable |
-| `training.lambda_gp` | `10.0` | Gradient penalty weight (WGAN-GP only); set to `0.0` to skip |
+| `training.lambda_gp` | `0.0` | GP weight — R1 for LSGAN/BCE/hinge, WGAN-GP for wasserstein |
 | `training.save_every` | `10` | Save checkpoint every N epochs |
 | `training.sample_every` | `5` | Save sample grid every N epochs |
 | `training.log_every` | `100` | Log to console every N batches |
@@ -1068,10 +1102,11 @@ python scripts/train.py model=dcgan training=default data=celeba
 | Key | Default | Description |
 |---|---|---|
 | `training.loss_type` | `bce` | Original pix2pix BCE loss |
+| `training.label_smoothing` | `0.9` | One-sided label smoothing — prevents D overconfidence on reals |
 | `training.lambda_l1` | `100.0` | L1 pixel loss weight |
 | `training.lambda_vgg` | `0.0` | VGG disabled (not in original pix2pix) |
 | `training.lambda_fm` | `0.0` | Feature matching disabled |
-| `training.lambda_gp` | `0.0` | Gradient penalty disabled |
+| `training.lambda_gp` | `10.0` | R1 gradient penalty weight (stabilizes BCE discriminator) |
 
 #### `configs/data/sar_eo.yaml`
 
@@ -1081,8 +1116,34 @@ python scripts/train.py model=dcgan training=default data=celeba
 | `data.image_size` | `256` | Spatial resolution (must be power of 2, ≥ 32) |
 | `data.sar_channels` | `1` | SAR input channels (1 or 3) |
 | `data.eo_channels` | `3` | EO output channels (3 for RGB) |
-| `data.dataset_format` | `side_by_side` | `side_by_side` or `separate_dirs` |
+| `data.dataset_format` | `side_by_side` | `side_by_side`, `separate_dirs`, or `sentinel_s1s2` |
 | `data.augment_train` | `true` | Enable crop + flip augmentation for training |
+
+#### `configs/data/sentinel.yaml`
+
+Pre-configured for the `sentinal/v_2/` category-folder dataset:
+
+| Key | Value | Description |
+|---|---|---|
+| `data.root` | `sentinal/v_2` | Root of the Sentinel category folders |
+| `data.dataset_format` | `sentinel_s1s2` | Pairs files via `_s1_` → `_s2_` name substitution |
+| `data.sar_channels` | `1` | Single-channel SAR input |
+| `data.eo_channels` | `3` | RGB EO output |
+
+#### Root config (`device` field)
+
+Both `config_pix2pix.yaml` and `config_pix2pixhd.yaml` expose a `device` key:
+
+| Value | Behaviour |
+|---|---|
+| `auto` (default) | Use CUDA if available and compatible, otherwise CPU |
+| `cpu` | Force CPU — use on machines with incompatible GPUs |
+| `cuda` | Force CUDA — will error if no compatible GPU is found |
+
+```bash
+python scripts/train_pix2pix.py data=sentinel device=cpu
+python scripts/train_pix2pixhd.py data=sentinel device=cuda
+```
 
 ### `prepare_data.py` CLI reference
 
@@ -1174,7 +1235,7 @@ python scripts/train_pix2pix.py model.discriminator.n_scales=1
 
 #### pix2pixHD
 
-Coarse-to-fine generator · 3-scale PatchGAN · LSGAN + L1 + VGG perceptual + feature matching
+ResNet global generator (9 blocks) · 3-scale PatchGAN · LSGAN + VGG perceptual + feature matching (no L1)
 
 Requires VGG weights — run `make download-weights` once before training.
 
@@ -1191,14 +1252,17 @@ python scripts/train_pix2pixhd.py training.lambda_vgg=0.0
 # Disable feature matching loss
 python scripts/train_pix2pixhd.py training.lambda_fm=0.0
 
-# Switch to Wasserstein loss with gradient penalty
+# Switch to Wasserstein loss with WGAN-GP
 python scripts/train_pix2pixhd.py training.loss_type=wasserstein training.lambda_gp=10.0
+
+# Enable R1 gradient penalty (for LSGAN/hinge)
+python scripts/train_pix2pixhd.py training.lambda_gp=10.0
 
 # Reduce discriminator scales (faster training, less global coherence)
 python scripts/train_pix2pixhd.py model.discriminator.n_scales=2
 
 # Larger generator (more capacity, higher VRAM usage)
-python scripts/train_pix2pixhd.py model.generator.base_features=128 model.generator.local_base_features=64
+python scripts/train_pix2pixhd.py model.generator.ngf=128 model.generator.n_blocks=9
 ```
 
 **pix2pixHD vs pix2pix — when to use which:**
@@ -1210,6 +1274,22 @@ python scripts/train_pix2pixhd.py model.generator.base_features=128 model.genera
 | VRAM requirement | ~4 GB | ~8 GB |
 | VGG weights needed | No | Yes (unless `lambda_vgg=0.0`) |
 | Recommended epochs | 100–200 | 200–400 |
+
+#### Training on the Sentinel dataset
+
+```bash
+# pix2pix on sentinal/v_2/ — CPU (incompatible GPU) or auto-detect
+python scripts/train_pix2pix.py data=sentinel device=cpu
+python scripts/train_pix2pix.py data=sentinel device=auto   # default
+
+# pix2pixHD on sentinal/v_2/
+python scripts/train_pix2pixhd.py data=sentinel device=cpu
+
+# Named experiment, fewer epochs for a quick test
+python scripts/train_pix2pix.py data=sentinel device=cpu experiment_name=sentinel_test training.epochs=10
+```
+
+The `sentinel_s1s2` dataset loader applies a deterministic 90/10 train/val split (seed 42) across all category folders in `sentinal/v_2/`.
 
 ---
 
@@ -1309,10 +1389,10 @@ Every training run automatically logs to MLflow — no setup required. Runs are 
 | `lambda_l1` | `100.0` | L1 pixel loss weight |
 | `lambda_vgg` | `10.0` | VGG perceptual loss weight |
 | `lambda_fm` | `10.0` | Feature matching loss weight |
-| `lambda_gp` | `10.0` | Gradient penalty weight (WGAN-GP) |
+| `lambda_gp` | `10.0` | Gradient penalty weight (R1 or WGAN-GP depending on loss type) |
 | `n_scales` | `3` | Number of discriminator scales |
 | `lr_g` | `0.0002` | Generator learning rate |
-| `lr_d` | `0.0002` | Discriminator learning rate |
+| `lr_d` | `0.0001` | Discriminator learning rate (TTUR) |
 | `batch_size` | `1` | Training batch size |
 
 **Metrics** (logged every epoch):
@@ -1410,7 +1490,7 @@ CUDA_VISIBLE_DEVICES=0
 ## Running Tests
 
 ```bash
-# All tests (103 total)
+# All tests (117 total)
 pytest
 
 # Verbose output
@@ -1434,9 +1514,9 @@ make coverage                        # opens htmlcov/index.html in browser
 
 | File | Tests | What's covered |
 |---|---|---|
-| `test_data.py` | 12 | Transform shapes (32/64/128), pixel range [-1, 1]; side-by-side and separate-dir dataset formats; unknown-format error; `setup_logging` |
-| `test_models.py` | 8 | DCGAN generator/discriminator shapes; BCE/Wasserstein/Hinge/LSGAN losses; gradient penalty; `sample()` |
-| `test_pix2pix.py` | 41 | U-Net and CoarseToFineGenerator output shapes; skip-connection and coarse-to-fine gradient flow; GlobalUNetGenerator / LocalEnhancer shapes; PatchGAN spectral norm and `forward_with_features`; multi-scale output structure; all loss types; VGG perceptual loss; feature matching loss; WGAN-GP train step; pix2pix trainer steps (lsgan×2scale, bce×1scale, hinge×2scale), FM/VGG integration, resume, sample saving, and train loop |
+| `test_data.py` | 16 | Transform shapes (32/64/128), pixel range [-1, 1]; side-by-side, separate-dir, and `sentinel_s1s2` dataset formats; train/val split; unknown-format error; `setup_logging` |
+| `test_models.py` | 12 | DCGAN generator/discriminator shapes; BCE/Wasserstein/Hinge/LSGAN losses; label smoothing; WGAN-GP and R1 gradient penalties; `sample()`; ResNetGenerator output shapes and gradient flow; `ResnetBlock` residual |
+| `test_pix2pix.py` | 43 | U-Net and CoarseToFineGenerator output shapes; skip-connection and coarse-to-fine gradient flow; GlobalUNetGenerator / LocalEnhancer shapes; PatchGAN spectral norm and `forward_with_features`; multi-scale output structure; all loss types; VGG perceptual loss; feature matching loss; WGAN-GP train step; pix2pix trainer steps (lsgan×2scale, bce×1scale, hinge×2scale), FM/VGG integration, LR decay, resume, sample saving, and train loop |
 | `test_inference.py` | 6 | `load_generator` and `generate_images`; FID/IS ImportError path and success path (mocked torch-fidelity) |
 | `test_sentinel_utils.py` | 19 | `linear_to_db` correctness and zero-safety; SAR/EO normalization ranges and clipping; `make_sar_image` channel configs (1/3ch) and input layouts (CHW/HWC); `make_eo_image` shape; `is_valid_patch` NaN/zero rejection; `make_side_by_side` shape, broadcast, spatial mismatch error, SAR-on-left |
 | `test_training.py` | 6 | Checkpoint save/load round-trip; DCGAN trainer step; gradient penalty; resume; sample saving; train loop (MLflow mocked) |
@@ -1477,9 +1557,9 @@ pre-commit run --all-files  # run all hooks manually
 ```
 BaseGenerator / BaseDiscriminator   (models/base.py — ABCs)
   ├── UNetGenerator                 (models/unet.py — 8-level U-Net for pix2pix)
-  ├── CoarseToFineGenerator         (models/coarse_to_fine.py — pix2pixHD)
-  │     ├── GlobalUNetGenerator     (7-level U-Net at 128×128)
-  │     └── LocalEnhancer           (3-level at 256×256)
+  ├── ResNetGenerator               (models/resnet_gen.py — ResNet global generator for pix2pixHD)
+  │     └── ResnetBlock             (reflect-pad + conv + norm + relu + conv + norm)
+  ├── CoarseToFineGenerator         (models/coarse_to_fine.py — legacy, kept for compat)
   ├── DCGANGenerator                (models/dcgan.py — unconditional)
   ├── PatchGANDiscriminator         (models/patchgan.py — 70×70 receptive field)
   │     └── wrapped by MultiScaleDiscriminator  (models/multiscale_disc.py)
