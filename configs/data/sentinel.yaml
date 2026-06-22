@@ -1,0 +1,7 @@
+name: sentinel
+root: sentinal/v_2
+image_size: 256
+sar_channels: 1
+eo_channels: 3
+dataset_format: sentinel_s1s2
+augment_train: true

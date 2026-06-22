@@ -7,6 +7,7 @@ from PIL import Image
 
 from gan_pipeline.data.dataset import get_dataloader
 from gan_pipeline.data.paired_dataset import (
+    SentinelS1S2Dataset,
     SeparateDirPairedDataset,
     SideBySidePairedDataset,
     get_paired_dataloader,
@@ -94,6 +95,67 @@ def test_get_paired_dataloader_separate_dirs(tmp_path: Path) -> None:
 def test_get_paired_dataloader_unknown_format(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="Unknown dataset_format"):
         get_paired_dataloader(str(tmp_path), "train", 64, 1, 3, batch_size=2, dataset_format="xyz")
+
+
+# --- SentinelS1S2Dataset ---
+
+
+def _make_sentinel_dir(tmp_path: Path, n_per_category: int = 4) -> Path:
+    """Create a minimal Sentinel-style multi-category dataset."""
+    categories = ["agri", "urban"]
+    for cat in categories:
+        for sensor in ("s1", "s2"):
+            (tmp_path / cat / sensor).mkdir(parents=True)
+        for i in range(n_per_category):
+            img = Image.fromarray(np.random.randint(0, 255, (64, 64), dtype=np.uint8))
+            img.save(tmp_path / cat / "s1" / f"ROIs1970_fall_s1_59_p{i:04d}.png")
+            img.save(tmp_path / cat / "s2" / f"ROIs1970_fall_s2_59_p{i:04d}.png")
+    return tmp_path
+
+
+def test_sentinel_s1s2_dataset_shape(tmp_path: Path) -> None:
+    _make_sentinel_dir(tmp_path, n_per_category=10)
+    ds = SentinelS1S2Dataset(str(tmp_path), "train", 64, 1, 3, augment=False)
+    sample = ds[0]
+    assert sample["sar"].shape == (1, 64, 64)
+    assert sample["eo"].shape == (3, 64, 64)
+    assert sample["sar"].min() >= -1.0 and sample["sar"].max() <= 1.0
+
+
+def test_sentinel_s1s2_train_val_split(tmp_path: Path) -> None:
+    _make_sentinel_dir(tmp_path, n_per_category=10)  # 20 total pairs
+    train_ds = SentinelS1S2Dataset(str(tmp_path), "train", 64, 1, 3, augment=False)
+    val_ds = SentinelS1S2Dataset(str(tmp_path), "val", 64, 1, 3, augment=False)
+    assert len(train_ds) + len(val_ds) == 20
+    assert len(val_ds) >= 1
+    assert len(train_ds) > len(val_ds)
+
+
+def test_sentinel_s1s2_no_pairs_raises(tmp_path: Path) -> None:
+    (tmp_path / "cat" / "s1").mkdir(parents=True)
+    (tmp_path / "cat" / "s2").mkdir(parents=True)
+    img = Image.fromarray(np.zeros((64, 64), dtype=np.uint8))
+    img.save(tmp_path / "cat" / "s1" / "ROIs1970_fall_s1_59_p001.png")
+    # s2 counterpart missing → no pairs
+    with pytest.raises(FileNotFoundError):
+        SentinelS1S2Dataset(str(tmp_path), "train", 64, 1, 3)
+
+
+def test_get_paired_dataloader_sentinel(tmp_path: Path) -> None:
+    _make_sentinel_dir(tmp_path, n_per_category=6)
+    loader = get_paired_dataloader(
+        str(tmp_path),
+        "train",
+        64,
+        1,
+        3,
+        batch_size=2,
+        num_workers=0,
+        dataset_format="sentinel_s1s2",
+    )
+    batch = next(iter(loader))
+    assert batch["sar"].shape == (2, 1, 64, 64)
+    assert batch["eo"].shape == (2, 3, 64, 64)
 
 
 # --- get_dataloader (ImageFolder) ---

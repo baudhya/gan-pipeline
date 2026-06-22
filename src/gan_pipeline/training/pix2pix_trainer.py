@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 
 import mlflow
@@ -5,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from loguru import logger
 from omegaconf import DictConfig
+from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid, save_image
 
@@ -19,6 +21,15 @@ from gan_pipeline.models.losses import (
 )
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
 from gan_pipeline.utils.checkpointing import load_checkpoint, save_checkpoint
+
+
+def _make_lr_lambda(n_epochs_keep: int, n_epochs_decay: int) -> Callable[[int], float]:
+    """Returns a lambda that keeps LR constant for n_epochs_keep, then linearly decays to 0."""
+
+    def _lambda(epoch: int) -> float:
+        return 1.0 - max(0, epoch - n_epochs_keep) / float(n_epochs_decay + 1)
+
+    return _lambda
 
 
 class Pix2PixTrainer:
@@ -67,6 +78,12 @@ class Pix2PixTrainer:
             betas=(cfg.training.beta1, cfg.training.beta2),
         )
 
+        n_decay = cfg.training.epochs // 2
+        n_keep = cfg.training.epochs - n_decay
+        self._lr_lambda = _make_lr_lambda(n_keep, n_decay)
+        self.sched_g = LambdaLR(self.opt_g, self._lr_lambda)
+        self.sched_d = LambdaLR(self.opt_d, self._lr_lambda)
+
         self.fixed_sar: torch.Tensor | None = None
         self.fixed_eo: torch.Tensor | None = None
         self.start_epoch = 0
@@ -81,6 +98,9 @@ class Pix2PixTrainer:
         self.opt_g.load_state_dict(state["opt_g"])
         self.opt_d.load_state_dict(state["opt_d"])
         self.start_epoch = state["epoch"] + 1
+        # Recreate schedulers at the correct epoch so LR is right on restart.
+        self.sched_g = LambdaLR(self.opt_g, self._lr_lambda, last_epoch=self.start_epoch - 1)
+        self.sched_d = LambdaLR(self.opt_d, self._lr_lambda, last_epoch=self.start_epoch - 1)
         logger.info(f"Resumed from epoch {state['epoch']}")
 
     def _train_step(
@@ -261,3 +281,6 @@ class Pix2PixTrainer:
                             "g_fm": avg_g_fm,
                         },
                     )
+
+                self.sched_g.step()
+                self.sched_d.step()

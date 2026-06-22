@@ -422,6 +422,29 @@ def test_pix2pix_trainer_resume(
     assert trainer.start_epoch == 8
 
 
+def test_pix2pix_trainer_lr_decay(
+    cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path
+) -> None:
+    cfg = _pix2pix_cfg(cfg, tmp_path)
+    with omegaconf.open_dict(cfg):
+        cfg.training.epochs = 4
+
+    from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
+
+    g = UNetGenerator(in_channels=1, out_channels=3)
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
+    trainer = Pix2PixTrainer(g, d, cfg, device, tmp_path)
+
+    initial_lr = trainer.opt_g.param_groups[0]["lr"]
+    assert initial_lr == pytest.approx(0.0002)
+
+    # Simulate 4 epoch-end scheduler steps; LR must decrease in the decay phase.
+    for _ in range(4):
+        trainer.sched_g.step()
+
+    assert trainer.opt_g.param_groups[0]["lr"] < initial_lr
+
+
 def test_pix2pix_trainer_save_samples(
     cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path
 ) -> None:

@@ -10,7 +10,7 @@ from gan_pipeline.models.base import BaseDiscriminator
 def _patch_block(in_ch: int, out_ch: int, stride: int = 2, bn: bool = True) -> nn.Sequential:
     layers: list[nn.Module] = [nn.Conv2d(in_ch, out_ch, 4, stride, 1, bias=not bn)]
     if bn:
-        layers.append(nn.BatchNorm2d(out_ch))
+        layers.append(nn.InstanceNorm2d(out_ch, affine=True))
     layers.append(nn.LeakyReLU(0.2, inplace=True))
     return nn.Sequential(*layers)
 
@@ -52,7 +52,7 @@ class PatchGANDiscriminator(BaseDiscriminator):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.normal_(m.weight, 0.0, 0.02)
-            elif isinstance(m, nn.BatchNorm2d):
+            elif isinstance(m, nn.InstanceNorm2d) and m.weight is not None:
                 nn.init.normal_(m.weight, 1.0, 0.02)
                 nn.init.zeros_(m.bias)
 
