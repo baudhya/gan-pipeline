@@ -46,7 +46,7 @@ make clean-all                      # clean + clean-venv
 
 ```bash
 # Tests
-pytest                              # run all 96 tests
+pytest                              # run all 98 tests
 pytest tests/test_pix2pix.py -v     # single file
 pytest -k "multiscale or sentinel"  # pattern match
 
@@ -110,16 +110,18 @@ Two GitHub Actions workflows (`.github/workflows/`):
 ### Trainer hierarchy
 
 ```
-BaseTrainer                  (training/base_trainer.py — ABC)
-  └── Pix2PixTrainer         (training/pix2pix_trainer.py)
+BaseTrainer                    (training/base_trainer.py — ABC)
+  └── PairedGANTrainer         (training/paired_trainer.py — ABC)
+        ├── Pix2PixTrainer     (training/pix2pix_trainer.py)
+        └── Pix2PixHDTrainer   (training/pix2pixhd_trainer.py)
 ```
 
-**`BaseTrainer`** owns all shared boilerplate:
-- `__init__`: moves models to device, creates Adam optimizers for G and D, makes output dirs
-- `resume(checkpoint_path)`: restores model + optimizer states
-- `train(dataloader)`: MLflow-instrumented epoch loop — calls `_step_batch` per batch, averages metrics, logs to MLflow, saves samples and checkpoints, steps schedulers
+**`BaseTrainer`** owns generic GAN boilerplate:
+- `__init__`: moves models to device, creates Adam optimizers for G and D, makes output dirs, calls `_build_schedulers()`
+- `resume(checkpoint_path)`: restores model + optimizer states + calls `_restore_schedulers()`
+- `train(dataloader)`: MLflow-instrumented epoch loop — calls `_step_batch` per batch, averages metrics, logs to MLflow, saves samples and checkpoints, calls `_step_schedulers()`
 
-**Subclasses must implement:**
+**Abstract methods** (must be implemented by concrete subclasses):
 
 | Method | Purpose |
 |---|---|
@@ -127,7 +129,7 @@ BaseTrainer                  (training/base_trainer.py — ABC)
 | `_step_batch(batch)` | One forward/backward pass; return `dict[str, float]` of metrics |
 | `_save_samples(epoch)` | Write visualisation images for the epoch |
 
-**Optional scheduler hooks** (all no-ops in base):
+**Optional scheduler hooks** (all no-ops in `BaseTrainer`):
 
 | Hook | When called |
 |---|---|
@@ -135,21 +137,34 @@ BaseTrainer                  (training/base_trainer.py — ABC)
 | `_step_schedulers()` | End of every epoch |
 | `_restore_schedulers(start_epoch)` | After `resume()`, to rewind scheduler state |
 
-**To add a new trainer:** subclass `BaseTrainer`, implement the three abstract methods, override scheduler hooks if needed.
+**`PairedGANTrainer`** adds everything shared by SAR→EO conditional GAN variants:
+- `_ms_disc: MultiScaleDiscriminator` — typed alias over `self.discriminator` for calls that need `forward_with_features`
+- `loss_type`, `label_smoothing` — read from config
+- Linear LR decay scheduler (implements all three scheduler hooks)
+- `_step_batch` — captures the first batch as fixed samples, then delegates to `_train_step`
+- `_save_samples` — saves a SAR / fake_EO / real_EO grid to `samples/epoch_XXXX.png`
+- `_train_step(sar, eo)` — runs G forward, then calls `_d_step` + `_g_step`, returns merged dict
 
-### Conditional pipeline (pix2pix) — main use case
+**Abstract methods added by `PairedGANTrainer`** (implement in `_d_step`/`_g_step` instead of `_step_batch`):
 
-**Entry point:** `scripts/train_pix2pix.py`  
-**Trainer:** `Pix2PixTrainer(BaseTrainer)` in `training/pix2pix_trainer.py`
+| Method | Returns |
+|---|---|
+| `_log_params()` | Hyperparameter dict for MLflow |
+| `_d_step(sar, eo, fake_eo)` | `dict[str, float]` — must contain at least `"d_loss"` |
+| `_g_step(sar, eo, fake_eo)` | `dict[str, float]` — must contain at least `"g_adv"` |
 
-Data flow:
-1. `get_paired_dataloader` → yields `{"sar": Tensor, "eo": Tensor}` dicts
-2. `UNetGenerator(sar) → fake_eo`
-3. `MultiScaleDiscriminator(cat([sar, eo]))` → list of N patch maps (finest→coarsest)
-4. Losses averaged across scales via `multiscale_discriminator_loss` / `multiscale_generator_loss`
-5. Generator total loss: `g_adv + λ_L1·L1(fake_eo, real_eo) + λ_VGG·L_VGG + λ_FM·L_FM`
+**`Pix2PixTrainer`** — original pix2pix:
+- Loss: adversarial (BCE/hinge/LSGAN) + λ_L1·L1 + optional R1/WGAN-GP
+- Metrics: `{"d_loss", "d_gp", "g_adv", "g_l1"}`
+- Config: `configs/training/pix2pix_original.yaml`
 
-`Pix2PixTrainer` stores `self._ms_disc: MultiScaleDiscriminator` as a typed alias over `self.discriminator` (typed `nn.Module` in the base) to call `forward_with_features` without casts. `_train_step(sar, eo)` is kept as a separate method so tests can call it directly.
+**`Pix2PixHDTrainer`** — pix2pixHD:
+- Loss: adversarial (LSGAN/hinge) + λ_VGG·VGG + λ_FM·FM
+- No L1, no gradient penalty — spectral norm in D handles stability
+- Metrics: `{"d_loss", "g_adv", "g_vgg", "g_fm"}`
+- Config: `configs/training/pix2pix.yaml` (pix2pixHD defaults)
+
+**To add a new paired trainer:** subclass `PairedGANTrainer`, implement `_log_params`, `_d_step`, and `_g_step`.
 
 ### Model hierarchy
 
@@ -165,14 +180,15 @@ BaseGenerator / BaseDiscriminator   (models/base.py — ABCs)
 
 ### Loss functions (`models/losses.py`)
 
-| Loss | Default weight | Controlled by |
-|---|---|---|
-| Adversarial (hinge/bce/wasserstein) | 1.0 | `training.loss_type` |
-| L1 pixel | 100.0 | `training.lambda_l1` |
-| VGG perceptual | 10.0 | `training.lambda_vgg` |
-| Feature matching | 10.0 | `training.lambda_fm` |
+| Loss | Used by | Default weight | Config key |
+|---|---|---|---|
+| Adversarial (hinge/bce/lsgan/wasserstein) | both | 1.0 | `training.loss_type` |
+| L1 pixel | Pix2PixTrainer only | 100.0 | `training.lambda_l1` |
+| R1 / WGAN-GP gradient penalty | Pix2PixTrainer only | 10.0 | `training.lambda_gp` |
+| VGG perceptual | Pix2PixHDTrainer only | 10.0 | `training.lambda_vgg` |
+| Feature matching | Pix2PixHDTrainer only | 10.0 | `training.lambda_fm` |
 
-Set any lambda to `0.0` to disable that loss term entirely.
+Set `lambda_gp = 0.0` to disable the gradient penalty (default for non-wasserstein runs).
 
 ### Configuration (Hydra)
 
@@ -206,8 +222,12 @@ To fall back to auto-download: `training.vgg_weights_path=null`.
 ```python
 {"epoch": int, "generator": OrderedDict, "discriminator": OrderedDict,
  "opt_g": dict, "opt_d": dict,
- "metrics": {"d_loss", "g_adv", "g_l1", "g_vgg", "g_fm"}}
+ "metrics": dict[str, float]}   # keys vary by trainer (see below)
 ```
+
+Metric keys by trainer:
+- **Pix2PixTrainer**: `d_loss`, `d_gp`, `g_adv`, `g_l1`
+- **Pix2PixHDTrainer**: `d_loss`, `g_adv`, `g_vgg`, `g_fm`
 
 See `utils/checkpointing.py`. Outputs go to `outputs/<experiment_name>/checkpoints/`.
 
@@ -234,7 +254,7 @@ Invoke with `/skill-name` in Claude Code. Files live in `.claude/skills/`.
 - **`/data/` in `.gitignore`** is root-anchored intentionally — `data/` would also exclude `src/gan_pipeline/data/`.
 - **`*.pth` and `*.pt` are gitignored** — VGG weights and checkpoints are never committed. `weights/.gitkeep` tracks the directory only.
 - **`MultiScaleDiscriminator` iteration:** `nn.ModuleList` elements type as `nn.Module`; use `cast(PatchGANDiscriminator, disc)` when calling `forward_with_features` — already done in `multiscale_disc.py`.
-- **`BaseTrainer.discriminator` is typed `nn.Module`** — `MultiScaleDiscriminator.forward()` returns `list[Tensor]`, violating `BaseDiscriminator`'s `Tensor` return, so the base uses `nn.Module`. Pix2PixTrainer stores `self._ms_disc: MultiScaleDiscriminator` as a typed alias for calls that need `forward_with_features`.
+- **`BaseTrainer.discriminator` is typed `nn.Module`** — `MultiScaleDiscriminator.forward()` returns `list[Tensor]`, violating `BaseDiscriminator`'s `Tensor` return, so the base uses `nn.Module`. `PairedGANTrainer` stores `self._ms_disc: MultiScaleDiscriminator` as a typed alias for all calls that need `forward_with_features`.
 - **MLflow patch target for tests** is `gan_pipeline.training.base_trainer.mlflow` — the training loop lives in `BaseTrainer`, not in the subclass.
 - **mypy strict mode** is enforced — all new code in `src/` must pass `mypy src/` with no errors. Use `# type: ignore[no-any-return]` for torch return types where needed.
 - **MLflow** logs automatically on every training run to `mlruns/` — no setup needed.
