@@ -187,10 +187,10 @@ class SentinelS1S2Dataset(Dataset[dict[str, torch.Tensor]]):
 def get_paired_dataloader(
     root: str,
     split: str,
-    image_size: int,
     sar_channels: int,
     eo_channels: int,
     batch_size: int,
+    image_size: int = 256,
     num_workers: int = 4,
     augment: bool = True,
     dataset_format: str = "side_by_side",

@@ -113,7 +113,14 @@ def test_separate_dir_dataset_mismatch_raises(tmp_path: Path) -> None:
 def test_get_paired_dataloader_separate_dirs(tmp_path: Path) -> None:
     root = _make_separate_dir(tmp_path)
     loader = get_paired_dataloader(
-        str(root), "train", 64, 1, 3, batch_size=2, num_workers=0, dataset_format="separate_dirs"
+        str(root),
+        "train",
+        sar_channels=1,
+        eo_channels=3,
+        batch_size=2,
+        image_size=64,
+        num_workers=0,
+        dataset_format="separate_dirs",
     )
     batch = next(iter(loader))
     assert "sar" in batch and "eo" in batch
@@ -132,10 +139,10 @@ def test_get_paired_dataloader_custom_transform(tmp_path: Path) -> None:
     loader = get_paired_dataloader(
         str(root),
         "train",
-        64,
-        1,
-        3,
+        sar_channels=1,
+        eo_channels=3,
         batch_size=2,
+        image_size=64,
         num_workers=0,
         dataset_format="separate_dirs",
         transform=_custom,
@@ -146,7 +153,14 @@ def test_get_paired_dataloader_custom_transform(tmp_path: Path) -> None:
 
 def test_get_paired_dataloader_unknown_format(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="Unknown dataset_format"):
-        get_paired_dataloader(str(tmp_path), "train", 64, 1, 3, batch_size=2, dataset_format="xyz")
+        get_paired_dataloader(
+            str(tmp_path),
+            "train",
+            sar_channels=1,
+            eo_channels=3,
+            batch_size=2,
+            dataset_format="xyz",
+        )
 
 
 # --- SentinelS1S2Dataset ---
@@ -198,10 +212,10 @@ def test_get_paired_dataloader_sentinel(tmp_path: Path) -> None:
     loader = get_paired_dataloader(
         str(tmp_path),
         "train",
-        64,
-        1,
-        3,
+        sar_channels=1,
+        eo_channels=3,
         batch_size=2,
+        image_size=64,
         num_workers=0,
         dataset_format="sentinel_s1s2",
     )
