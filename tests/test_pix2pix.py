@@ -509,10 +509,11 @@ def _make_side_by_side_dir(tmp_path: Path, n: int = 4, sar_mode: str = "L") -> P
 
 def test_side_by_side_dataset(tmp_path: Path) -> None:
     from gan_pipeline.data.paired_dataset import SideBySidePairedDataset
+    from gan_pipeline.data.transforms import val_transform
 
     _make_side_by_side_dir(tmp_path, n=4)
     ds = SideBySidePairedDataset(
-        str(tmp_path), "train", image_size=64, sar_channels=1, eo_channels=3, augment=False
+        str(tmp_path), "train", sar_channels=1, eo_channels=3, transform=val_transform(64)
     )
     assert len(ds) == 4
 
@@ -524,10 +525,11 @@ def test_side_by_side_dataset(tmp_path: Path) -> None:
 
 def test_side_by_side_dataset_augment(tmp_path: Path) -> None:
     from gan_pipeline.data.paired_dataset import SideBySidePairedDataset
+    from gan_pipeline.data.transforms import train_transform
 
     _make_side_by_side_dir(tmp_path, n=2)
     ds = SideBySidePairedDataset(
-        str(tmp_path), "train", image_size=64, sar_channels=1, eo_channels=3, augment=True
+        str(tmp_path), "train", sar_channels=1, eo_channels=3, transform=train_transform(64)
     )
     sample = ds[0]
     assert sample["sar"].shape == (1, 64, 64)

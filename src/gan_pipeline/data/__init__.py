@@ -7,11 +7,13 @@ from gan_pipeline.data.sentinel_utils import (
     normalize_eo,
     normalize_sar,
 )
-from gan_pipeline.data.transforms import get_transforms
+from gan_pipeline.data.transforms import PairedTransform, train_transform, val_transform
 
 __all__ = [
     "get_paired_dataloader",
-    "get_transforms",
+    "PairedTransform",
+    "train_transform",
+    "val_transform",
     "linear_to_db",
     "normalize_sar",
     "normalize_eo",
