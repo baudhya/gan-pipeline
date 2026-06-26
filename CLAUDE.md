@@ -46,7 +46,7 @@ make clean-all                      # clean + clean-venv
 
 ```bash
 # Tests
-pytest                              # run all 98 tests
+pytest                              # run all 101 tests
 pytest tests/test_pix2pix.py -v     # single file
 pytest -k "multiscale or sentinel"  # pattern match
 
@@ -119,7 +119,7 @@ BaseTrainer                    (training/base_trainer.py — ABC)
 **`BaseTrainer`** owns generic GAN boilerplate:
 - `__init__`: moves models to device, creates Adam optimizers for G and D, makes output dirs, calls `_build_schedulers()`
 - `resume(checkpoint_path)`: restores model + optimizer states + calls `_restore_schedulers()`
-- `train(dataloader)`: MLflow-instrumented epoch loop — calls `_step_batch` per batch, averages metrics, logs to MLflow, saves samples and checkpoints, calls `_step_schedulers()`
+- `train(dataloader)`: MLflow-instrumented epoch loop — calls `_step_batch` per batch, averages metrics, logs to MLflow; saves samples every `sample_every` epochs (also logged to MLflow as artifacts under `samples/`) and intra-epoch at every `log_every` batch; saves checkpoints every `save_every` epochs; calls `_step_schedulers()`
 
 **Abstract methods** (must be implemented by concrete subclasses):
 
@@ -178,6 +178,8 @@ BaseGenerator / BaseDiscriminator   (models/base.py — ABCs)
 
 `MultiScaleDiscriminator.forward()` returns `list[Tensor]` (one patch map per scale), not a single tensor — this is why `multiscale_*_loss` functions in `models/losses.py` exist separately from the single-scale variants.
 
+All three model implementations use **`nn.InstanceNorm2d(affine=True)`** — matching both pix2pix (PyTorch reference) and pix2pixHD paper, and essential for `batch_size=1` where batch statistics are meaningless. Never replace with `BatchNorm` or `GroupNorm`.
+
 ### Loss functions (`models/losses.py`)
 
 | Loss | Used by | Default weight | Config key |
@@ -204,9 +206,23 @@ CLI overrides: `python scripts/train_pix2pix.py training.loss_type=bce model.dis
 
 ### Data pipeline
 
-**Training format:** side-by-side PNGs — SAR left half, EO right half (512×256 for 256×256 target). Produced by `scripts/prepare_data.py`.
+**Fixed image size:** 256×256. All models, configs, and transforms are calibrated for this resolution.
 
-`SideBySidePairedDataset` (`data/paired_dataset.py`) crops at `w//2`. Augmentation (resize→crop→hflip) is synchronized across both halves via shared `(i, j, h, w)` parameters. All tensors normalized to `[-1, 1]`.
+**Training format:** side-by-side PNGs — SAR left half, EO right half (512×256 total). Produced by `scripts/prepare_data.py`. Three dataset classes are available, all in `data/paired_dataset.py`:
+
+| Class | Layout | Selected by |
+|---|---|---|
+| `SideBySidePairedDataset` | single `[SAR\|EO]` PNG per pair | `dataset_format: side_by_side` |
+| `SeparateDirPairedDataset` | `trainA/` (SAR) + `trainB/` (EO) | `dataset_format: separate_dirs` |
+| `SentinelS1S2Dataset` | `{cat}/s1/` + `{cat}/s2/`, paired by filename | `dataset_format: sentinel_s1s2` |
+
+All three accept `transform: PairedTransform | None`. `PairedTransform = Callable[[Image, Image], tuple[Image, Image]]` — a synchronized callable that applies the same spatial ops to both images. Tensor conversion and `[-1, 1]` normalization always happen after the transform regardless.
+
+**Standard transforms** (`data/transforms.py`):
+- `train_transform(image_size)` — resize to `int(image_size × 1.12)` (286 for 256), random crop to `image_size`, random hflip; crop and flip are synchronized across SAR and EO
+- `val_transform(image_size)` — deterministic resize to `image_size × image_size`
+
+**`get_paired_dataloader`** creates the default transform from `augment` and `image_size` when no `transform` is injected. `image_size` defaults to 256. Pass a custom `transform=` to override augmentation entirely.
 
 For smoke testing without real data: `python scripts/make_dummy_data.py` generates 50 noise pairs in `data/sar_eo/`.
 
@@ -251,6 +267,8 @@ Invoke with `/skill-name` in Claude Code. Files live in `.claude/skills/`.
 ## Key non-obvious constraints
 
 - **`ReLU(inplace=False)` in `_dec_block` (unet.py):** inplace ReLU in the decoder corrupts encoder skip tensors that LeakyReLU backward needs — causes `RuntimeError: ... is at version 2; expected version 1`. Never change to inplace.
+- **`InstanceNorm2d` in all three models:** both papers use instance norm; batch norm breaks at `batch_size=1`. Never replace with `GroupNorm` or `BatchNorm2d`.
+- **Dataset classes have no `augment` or `image_size` param** — those belong to the injected `PairedTransform`. Use `train_transform(256)` / `val_transform(256)` from `data/transforms.py`; `get_paired_dataloader` creates them automatically from `augment` and `image_size=256`.
 - **`/data/` in `.gitignore`** is root-anchored intentionally — `data/` would also exclude `src/gan_pipeline/data/`.
 - **`*.pth` and `*.pt` are gitignored** — VGG weights and checkpoints are never committed. `weights/.gitkeep` tracks the directory only.
 - **`MultiScaleDiscriminator` iteration:** `nn.ModuleList` elements type as `nn.Module`; use `cast(PatchGANDiscriminator, disc)` when calling `forward_with_features` — already done in `multiscale_disc.py`.
