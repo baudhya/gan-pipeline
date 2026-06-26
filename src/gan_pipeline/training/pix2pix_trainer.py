@@ -7,8 +7,6 @@ from omegaconf import DictConfig
 from gan_pipeline.models.base import BaseGenerator
 from gan_pipeline.models.losses import (
     LossType,
-    VGGPerceptualLoss,
-    feature_matching_loss,
     multiscale_discriminator_loss,
     multiscale_generator_loss,
     multiscale_gradient_penalty,
@@ -23,7 +21,6 @@ class Pix2PixTrainer(PairedGANTrainer):
     Original pix2pix: U-Net generator + single-scale PatchGAN.
 
     Loss: BCE + λ_L1·L1 + optional R1 gradient penalty.
-    VGG and feature matching are supported but off by default.
     """
 
     def __init__(
@@ -35,14 +32,7 @@ class Pix2PixTrainer(PairedGANTrainer):
         output_dir: Path,
     ) -> None:
         super().__init__(generator, discriminator, cfg, device, output_dir)
-
         self.lambda_l1: float = cfg.training.lambda_l1
-        self.lambda_vgg: float = float(cfg.training.get("lambda_vgg", 0.0))
-        _vgg_path: str | None = cfg.training.get("vgg_weights_path", None)
-        self.vgg_loss: VGGPerceptualLoss | None = (
-            VGGPerceptualLoss(weights_path=_vgg_path).to(device) if self.lambda_vgg > 0 else None
-        )
-        self.lambda_fm: float = float(cfg.training.get("lambda_fm", 0.0))
         self.lambda_gp: float = float(cfg.training.get("lambda_gp", 0.0))
 
     def _log_params(self) -> dict[str, object]:
@@ -50,8 +40,6 @@ class Pix2PixTrainer(PairedGANTrainer):
             "model": self.cfg.model.name,
             "loss_type": self.cfg.training.loss_type,
             "lambda_l1": self.lambda_l1,
-            "lambda_vgg": self.lambda_vgg,
-            "lambda_fm": self.lambda_fm,
             "lambda_gp": self.lambda_gp,
             "n_scales": len(self._ms_disc.discriminators),
             "base_features": self.cfg.model.generator.base_features,
@@ -90,33 +78,14 @@ class Pix2PixTrainer(PairedGANTrainer):
     def _g_step(
         self, sar: torch.Tensor, eo: torch.Tensor, fake_eo: torch.Tensor
     ) -> dict[str, float]:
-        real_pair = torch.cat([sar, eo], dim=1)
         fake_pair_g = torch.cat([sar, fake_eo], dim=1)
-
-        g_fm_val = 0.0
-        if self.lambda_fm > 0:
-            with torch.no_grad():
-                _, real_feats = self._ms_disc.forward_with_features(real_pair)
-            fake_maps_g, fake_feats = self._ms_disc.forward_with_features(fake_pair_g)
-            g_fm = feature_matching_loss(real_feats, fake_feats)
-            g_fm_val = g_fm.item()
-        else:
-            fake_maps_g = self._ms_disc(fake_pair_g)
-            g_fm = None
+        fake_maps_g = self._ms_disc(fake_pair_g)
 
         g_adv = multiscale_generator_loss(fake_maps_g, self.loss_type)
         g_l1 = F.l1_loss(fake_eo, eo)
         g_loss = g_adv + self.lambda_l1 * g_l1
-        if g_fm is not None:
-            g_loss = g_loss + self.lambda_fm * g_fm
-
-        g_vgg_val = 0.0
-        if self.vgg_loss is not None:
-            g_vgg = self.vgg_loss(fake_eo, eo)
-            g_loss = g_loss + self.lambda_vgg * g_vgg
-            g_vgg_val = g_vgg.item()
 
         self.opt_g.zero_grad()
         g_loss.backward()  # type: ignore[no-untyped-call]
         self.opt_g.step()
-        return {"g_adv": g_adv.item(), "g_l1": g_l1.item(), "g_vgg": g_vgg_val, "g_fm": g_fm_val}
+        return {"g_adv": g_adv.item(), "g_l1": g_l1.item()}

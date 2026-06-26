@@ -249,9 +249,8 @@ def test_pix2pix_train_step(
 
     assert all(isinstance(v, float) for v in m.values())
     assert all(not (v != v) for v in m.values())  # no NaN
-    assert m["g_vgg"] == 0.0  # VGG disabled
-    assert m["g_fm"] == 0.0  # FM disabled
     assert m["d_gp"] == 0.0  # GP disabled
+    assert "g_vgg" not in m and "g_fm" not in m  # pix2pix has no VGG/FM
 
 
 def test_multiscale_gradient_penalty() -> None:
@@ -300,57 +299,10 @@ def _pix2pix_cfg(cfg: omegaconf.DictConfig, tmp_path: Path) -> omegaconf.DictCon
         cfg.model.name = "pix2pix"
         cfg.training.loss_type = "hinge"
         cfg.training.lambda_l1 = 100.0
-        cfg.training.lambda_vgg = 0.0
-        cfg.training.lambda_fm = 0.0
         cfg.training.lambda_gp = 0.0
         cfg.data.sar_channels = 1
         cfg.data.eo_channels = 3
     return cfg
-
-
-def test_pix2pix_train_step_with_fm(
-    cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path
-) -> None:
-    cfg = _pix2pix_cfg(cfg, tmp_path)
-    with omegaconf.open_dict(cfg):
-        cfg.training.lambda_fm = 10.0
-
-    from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
-
-    g = UNetGenerator(in_channels=1, out_channels=3)
-    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
-    trainer = Pix2PixTrainer(g, d, cfg, device, tmp_path)
-
-    sar = torch.randn(2, 1, 256, 256)
-    eo = torch.randn(2, 3, 256, 256)
-    m = trainer._train_step(sar, eo)
-    assert m["g_fm"] > 0.0
-
-
-def test_pix2pix_train_step_with_vgg(
-    cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path
-) -> None:
-    cfg = _pix2pix_cfg(cfg, tmp_path)
-    with omegaconf.open_dict(cfg):
-        cfg.training.lambda_vgg = 1.0
-
-    from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
-
-    mock_vgg_cls = MagicMock()
-    mock_vgg = MagicMock()
-    mock_vgg.to.return_value = mock_vgg
-    mock_vgg.return_value = torch.tensor(0.5)
-    mock_vgg_cls.return_value = mock_vgg
-
-    with patch("gan_pipeline.training.pix2pix_trainer.VGGPerceptualLoss", mock_vgg_cls):
-        g = UNetGenerator(in_channels=1, out_channels=3)
-        d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
-        trainer = Pix2PixTrainer(g, d, cfg, device, tmp_path)
-
-    sar = torch.randn(2, 1, 256, 256)
-    eo = torch.randn(2, 3, 256, 256)
-    m = trainer._train_step(sar, eo)
-    assert m["g_vgg"] > 0.0
 
 
 def test_pix2pix_trainer_resume(
@@ -475,7 +427,7 @@ def test_pix2pix_g_step(cfg: omegaconf.DictConfig, device: torch.device, tmp_pat
     fake_eo = g(sar)
     m = trainer._g_step(sar, eo, fake_eo)
     assert all(isinstance(v, float) for v in m.values())
-    assert m["g_vgg"] == 0.0 and m["g_fm"] == 0.0  # disabled in default cfg
+    assert set(m.keys()) == {"g_adv", "g_l1"}
 
 
 # --- Pix2PixHDTrainer ---
