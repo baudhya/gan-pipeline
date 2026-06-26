@@ -434,7 +434,7 @@ def test_pix2pix_trainer_train_loop(
     d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
     trainer = Pix2PixTrainer(g, d, cfg, device, tmp_path)
 
-    with patch("gan_pipeline.training.pix2pix_trainer.mlflow") as mock_mlflow:
+    with patch("gan_pipeline.training.base_trainer.mlflow") as mock_mlflow:
         mock_mlflow.start_run.return_value = MagicMock()
         trainer.train(loader)
 

@@ -1,13 +1,10 @@
 from collections.abc import Callable
 from pathlib import Path
 
-import mlflow
 import torch
 import torch.nn.functional as F
-from loguru import logger
 from omegaconf import DictConfig
 from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import DataLoader
 from torchvision.utils import make_grid, save_image
 
 from gan_pipeline.models.base import BaseGenerator
@@ -21,7 +18,7 @@ from gan_pipeline.models.losses import (
     r1_gradient_penalty,
 )
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
-from gan_pipeline.utils.checkpointing import load_checkpoint, save_checkpoint
+from gan_pipeline.training.base_trainer import BaseTrainer
 
 
 def _make_lr_lambda(n_epochs_keep: int, n_epochs_decay: int) -> Callable[[int], float]:
@@ -33,7 +30,7 @@ def _make_lr_lambda(n_epochs_keep: int, n_epochs_decay: int) -> Callable[[int], 
     return _lambda
 
 
-class Pix2PixTrainer:
+class Pix2PixTrainer(BaseTrainer):
     """
     Trainer for conditional SAR→EO translation using pix2pix with multi-scale PatchGAN.
 
@@ -43,6 +40,9 @@ class Pix2PixTrainer:
                    L_G = mean(adv across scales) + lambda_L1 * L1(fake_eo, real_eo)
     """
 
+    # Narrow the discriminator type so pix2pix methods can call forward_with_features.
+    _ms_disc: MultiScaleDiscriminator
+
     def __init__(
         self,
         generator: BaseGenerator,
@@ -51,11 +51,9 @@ class Pix2PixTrainer:
         device: torch.device,
         output_dir: Path,
     ) -> None:
-        self.generator = generator.to(device)
-        self.discriminator = discriminator.to(device)
-        self.cfg = cfg
-        self.device = device
-        self.output_dir = output_dir
+        super().__init__(generator, discriminator, cfg, device, output_dir)
+        self._ms_disc = discriminator
+
         self.loss_type = LossType(cfg.training.loss_type)
         self.lambda_l1: float = cfg.training.lambda_l1
         self.lambda_vgg: float = float(cfg.training.get("lambda_vgg", 0.0))
@@ -69,108 +67,63 @@ class Pix2PixTrainer:
         self.lambda_gp: float = float(cfg.training.get("lambda_gp", 0.0))
         self.label_smoothing: float = float(cfg.training.get("label_smoothing", 1.0))
 
-        self.opt_g = torch.optim.Adam(
-            generator.parameters(),
-            lr=cfg.training.lr_generator,
-            betas=(cfg.training.beta1, cfg.training.beta2),
-        )
-        self.opt_d = torch.optim.Adam(
-            discriminator.parameters(),
-            lr=cfg.training.lr_discriminator,
-            betas=(cfg.training.beta1, cfg.training.beta2),
-        )
+        self.fixed_sar: torch.Tensor | None = None
+        self.fixed_eo: torch.Tensor | None = None
 
-        n_decay = cfg.training.epochs // 2
-        n_keep = cfg.training.epochs - n_decay
+    # ------------------------------------------------------------------
+    # Scheduler hooks
+    # ------------------------------------------------------------------
+
+    def _build_schedulers(self) -> None:
+        n_decay = self.cfg.training.epochs // 2
+        n_keep = self.cfg.training.epochs - n_decay
         self._lr_lambda = _make_lr_lambda(n_keep, n_decay)
         self.sched_g = LambdaLR(self.opt_g, self._lr_lambda)
         self.sched_d = LambdaLR(self.opt_d, self._lr_lambda)
 
-        self.fixed_sar: torch.Tensor | None = None
-        self.fixed_eo: torch.Tensor | None = None
-        self.start_epoch = 0
+    def _step_schedulers(self) -> None:
+        self.sched_g.step()
+        self.sched_d.step()
 
-        (output_dir / "samples").mkdir(parents=True, exist_ok=True)
-        (output_dir / "checkpoints").mkdir(parents=True, exist_ok=True)
+    def _restore_schedulers(self, start_epoch: int) -> None:
+        self.sched_g = LambdaLR(self.opt_g, self._lr_lambda, last_epoch=start_epoch - 1)
+        self.sched_d = LambdaLR(self.opt_d, self._lr_lambda, last_epoch=start_epoch - 1)
 
-    def resume(self, checkpoint_path: Path) -> None:
-        state = load_checkpoint(checkpoint_path, self.device)
-        self.generator.load_state_dict(state["generator"])
-        self.discriminator.load_state_dict(state["discriminator"])
-        self.opt_g.load_state_dict(state["opt_g"])
-        self.opt_d.load_state_dict(state["opt_d"])
-        self.start_epoch = state["epoch"] + 1
-        # Recreate schedulers at the correct epoch so LR is right on restart.
-        self.sched_g = LambdaLR(self.opt_g, self._lr_lambda, last_epoch=self.start_epoch - 1)
-        self.sched_d = LambdaLR(self.opt_d, self._lr_lambda, last_epoch=self.start_epoch - 1)
-        logger.info(f"Resumed from epoch {state['epoch']}")
+    # ------------------------------------------------------------------
+    # Abstract implementations
+    # ------------------------------------------------------------------
 
-    def _train_step(
-        self, sar: torch.Tensor, eo: torch.Tensor
-    ) -> tuple[float, float, float, float, float, float]:
-        sar = sar.to(self.device)
-        eo = eo.to(self.device)
+    def _log_params(self) -> dict[str, object]:
+        return {
+            "model": self.cfg.model.name,
+            "loss_type": self.cfg.training.loss_type,
+            "lambda_l1": self.lambda_l1,
+            "lambda_vgg": self.lambda_vgg,
+            "lambda_fm": self.lambda_fm,
+            "lambda_gp": self.lambda_gp,
+            "n_scales": len(self._ms_disc.discriminators),
+            "lr_g": self.cfg.training.lr_generator,
+            "lr_d": self.cfg.training.lr_discriminator,
+            "batch_size": self.cfg.training.batch_size,
+        }
 
-        fake_eo = self.generator(sar)
+    def _step_batch(self, batch: dict[str, torch.Tensor]) -> dict[str, float]:
+        sar: torch.Tensor = batch["sar"]
+        eo: torch.Tensor = batch["eo"]
 
-        # --- Discriminator (multi-scale) ---
-        real_pair = torch.cat([sar, eo], dim=1)
-        fake_pair = torch.cat([sar, fake_eo.detach()], dim=1)
+        if self.fixed_sar is None:
+            self.fixed_sar = sar[:8].to(self.device)
+            self.fixed_eo = eo[:8].to(self.device)
 
-        real_maps = self.discriminator(real_pair)  # list[Tensor]
-        fake_maps = self.discriminator(fake_pair)
-
-        d_loss = multiscale_discriminator_loss(
-            real_maps, fake_maps, self.loss_type, self.label_smoothing
-        )
-
-        d_gp_val = 0.0
-        if self.lambda_gp > 0:
-            if self.loss_type == LossType.WASSERSTEIN:
-                gp = multiscale_gradient_penalty(self.discriminator, real_pair, fake_pair)
-                d_loss = d_loss + self.lambda_gp * gp
-            else:
-                # R1 regularization for BCE / LSGAN / hinge
-                gp = r1_gradient_penalty(self.discriminator, real_pair)
-                d_loss = d_loss + (self.lambda_gp / 2) * gp
-            d_gp_val = gp.item()
-
-        self.opt_d.zero_grad()
-        d_loss.backward()  # type: ignore[no-untyped-call]
-        self.opt_d.step()
-
-        # --- Generator ---
-        fake_pair_g = torch.cat([sar, fake_eo], dim=1)
-
-        g_fm_val = 0.0
-        if self.lambda_fm > 0:
-            with torch.no_grad():
-                _, real_feats = self.discriminator.forward_with_features(real_pair)
-            fake_maps_g, fake_feats = self.discriminator.forward_with_features(fake_pair_g)
-            g_fm = feature_matching_loss(real_feats, fake_feats)
-            g_fm_val = g_fm.item()
-        else:
-            fake_maps_g = self.discriminator(fake_pair_g)
-            g_fm = None
-
-        g_adv = multiscale_generator_loss(fake_maps_g, self.loss_type)
-        g_l1 = F.l1_loss(fake_eo, eo)
-        g_loss = g_adv + self.lambda_l1 * g_l1
-
-        if g_fm is not None:
-            g_loss = g_loss + self.lambda_fm * g_fm
-
-        g_vgg_val = 0.0
-        if self.vgg_loss is not None:
-            g_vgg = self.vgg_loss(fake_eo, eo)
-            g_loss = g_loss + self.lambda_vgg * g_vgg
-            g_vgg_val = g_vgg.item()
-
-        self.opt_g.zero_grad()
-        g_loss.backward()  # type: ignore[no-untyped-call]
-        self.opt_g.step()
-
-        return d_loss.item(), g_adv.item(), g_l1.item(), g_vgg_val, g_fm_val, d_gp_val
+        d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = self._train_step(sar, eo)
+        return {
+            "d_loss": d_loss,
+            "g_adv": g_adv,
+            "g_l1": g_l1,
+            "g_vgg": g_vgg,
+            "g_fm": g_fm,
+            "d_gp": d_gp,
+        }
 
     def _save_samples(self, epoch: int) -> None:
         assert self.fixed_sar is not None and self.fixed_eo is not None
@@ -195,101 +148,72 @@ class Pix2PixTrainer:
             self.output_dir / "samples" / f"epoch_{epoch:04d}.png",
         )
 
-    def train(self, dataloader: DataLoader) -> None:  # type: ignore[type-arg]
-        n_scales = len(self.discriminator.discriminators)
-        mlflow.set_tracking_uri("sqlite:///mlflow.db")
-        mlflow.set_experiment(self.cfg.experiment_name)
+    # ------------------------------------------------------------------
+    # Core pix2pix step (kept for direct testability)
+    # ------------------------------------------------------------------
 
-        with mlflow.start_run():
-            mlflow.log_params(
-                {
-                    "model": self.cfg.model.name,
-                    "loss_type": self.cfg.training.loss_type,
-                    "lambda_l1": self.lambda_l1,
-                    "lambda_vgg": self.lambda_vgg,
-                    "lambda_fm": self.lambda_fm,
-                    "lambda_gp": self.lambda_gp,
-                    "n_scales": n_scales,
-                    "lr_g": self.cfg.training.lr_generator,
-                    "lr_d": self.cfg.training.lr_discriminator,
-                    "batch_size": self.cfg.training.batch_size,
-                }
-            )
+    def _train_step(
+        self, sar: torch.Tensor, eo: torch.Tensor
+    ) -> tuple[float, float, float, float, float, float]:
+        sar = sar.to(self.device)
+        eo = eo.to(self.device)
 
-            for epoch in range(self.start_epoch, self.cfg.training.epochs):
-                self.generator.train()
-                self.discriminator.train()
+        fake_eo = self.generator(sar)
 
-                d_losses: list[float] = []
-                g_adv_losses: list[float] = []
-                g_l1_losses: list[float] = []
-                g_vgg_losses: list[float] = []
-                g_fm_losses: list[float] = []
-                d_gp_losses: list[float] = []
+        # --- Discriminator (multi-scale) ---
+        real_pair = torch.cat([sar, eo], dim=1)
+        fake_pair = torch.cat([sar, fake_eo.detach()], dim=1)
 
-                for i, batch in enumerate(dataloader):
-                    sar: torch.Tensor = batch["sar"]
-                    eo: torch.Tensor = batch["eo"]
+        real_maps = self._ms_disc(real_pair)
+        fake_maps = self._ms_disc(fake_pair)
 
-                    if self.fixed_sar is None:
-                        self.fixed_sar = sar[:8].to(self.device)
-                        self.fixed_eo = eo[:8].to(self.device)
+        d_loss = multiscale_discriminator_loss(
+            real_maps, fake_maps, self.loss_type, self.label_smoothing
+        )
 
-                    d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = self._train_step(sar, eo)
-                    d_losses.append(d_loss)
-                    g_adv_losses.append(g_adv)
-                    g_l1_losses.append(g_l1)
-                    g_vgg_losses.append(g_vgg)
-                    g_fm_losses.append(g_fm)
-                    d_gp_losses.append(d_gp)
+        d_gp_val = 0.0
+        if self.lambda_gp > 0:
+            if self.loss_type == LossType.WASSERSTEIN:
+                gp = multiscale_gradient_penalty(self._ms_disc, real_pair, fake_pair)
+                d_loss = d_loss + self.lambda_gp * gp
+            else:
+                gp = r1_gradient_penalty(self._ms_disc, real_pair)
+                d_loss = d_loss + (self.lambda_gp / 2) * gp
+            d_gp_val = gp.item()
 
-                    if i % self.cfg.training.log_every == 0:
-                        logger.info(
-                            f"Epoch {epoch}/{self.cfg.training.epochs} "
-                            f"[{i}/{len(dataloader)}] "
-                            f"D: {d_loss:.4f}  G_adv: {g_adv:.4f}  "
-                            f"G_L1: {g_l1:.4f}  G_VGG: {g_vgg:.4f}  G_FM: {g_fm:.4f}  "
-                            f"D_GP: {d_gp:.4f}"
-                        )
+        self.opt_d.zero_grad()
+        d_loss.backward()  # type: ignore[no-untyped-call]
+        self.opt_d.step()
 
-                avg_d = sum(d_losses) / len(d_losses)
-                avg_g_adv = sum(g_adv_losses) / len(g_adv_losses)
-                avg_g_l1 = sum(g_l1_losses) / len(g_l1_losses)
-                avg_g_vgg = sum(g_vgg_losses) / len(g_vgg_losses)
-                avg_g_fm = sum(g_fm_losses) / len(g_fm_losses)
-                avg_d_gp = sum(d_gp_losses) / len(d_gp_losses)
+        # --- Generator ---
+        fake_pair_g = torch.cat([sar, fake_eo], dim=1)
 
-                mlflow.log_metrics(
-                    {
-                        "d_loss": avg_d,
-                        "g_adv": avg_g_adv,
-                        "g_l1": avg_g_l1,
-                        "g_vgg": avg_g_vgg,
-                        "g_fm": avg_g_fm,
-                        "d_gp": avg_d_gp,
-                    },
-                    step=epoch,
-                )
+        g_fm_val = 0.0
+        if self.lambda_fm > 0:
+            with torch.no_grad():
+                _, real_feats = self._ms_disc.forward_with_features(real_pair)
+            fake_maps_g, fake_feats = self._ms_disc.forward_with_features(fake_pair_g)
+            g_fm = feature_matching_loss(real_feats, fake_feats)
+            g_fm_val = g_fm.item()
+        else:
+            fake_maps_g = self._ms_disc(fake_pair_g)
+            g_fm = None
 
-                if epoch % self.cfg.training.sample_every == 0:
-                    self._save_samples(epoch)
+        g_adv = multiscale_generator_loss(fake_maps_g, self.loss_type)
+        g_l1 = F.l1_loss(fake_eo, eo)
+        g_loss = g_adv + self.lambda_l1 * g_l1
 
-                if epoch % self.cfg.training.save_every == 0:
-                    save_checkpoint(
-                        self.output_dir / "checkpoints" / f"epoch_{epoch:04d}.pt",
-                        epoch,
-                        self.generator,
-                        self.discriminator,
-                        self.opt_g,
-                        self.opt_d,
-                        {
-                            "d_loss": avg_d,
-                            "g_adv": avg_g_adv,
-                            "g_l1": avg_g_l1,
-                            "g_vgg": avg_g_vgg,
-                            "g_fm": avg_g_fm,
-                        },
-                    )
+        if g_fm is not None:
+            g_loss = g_loss + self.lambda_fm * g_fm
 
-                self.sched_g.step()
-                self.sched_d.step()
+        g_vgg_val = 0.0
+        if self.vgg_loss is not None:
+            g_vgg = self.vgg_loss(fake_eo, eo)
+            g_loss = g_loss + self.lambda_vgg * g_vgg
+            g_vgg_val = g_vgg.item()
+
+        self.opt_g.zero_grad()
+        g_loss.backward()  # type: ignore[no-untyped-call]
+        self.opt_g.step()
+
+        return d_loss.item(), g_adv.item(), g_l1.item(), g_vgg_val, g_fm_val, d_gp_val
