@@ -22,8 +22,6 @@ from gan_pipeline.training.base_trainer import BaseTrainer
 
 
 def _make_lr_lambda(n_epochs_keep: int, n_epochs_decay: int) -> Callable[[int], float]:
-    """Returns a lambda that keeps LR constant for n_epochs_keep, then linearly decays to 0."""
-
     def _lambda(epoch: int) -> float:
         return 1.0 - max(0, epoch - n_epochs_keep) / float(n_epochs_decay + 1)
 
@@ -32,15 +30,14 @@ def _make_lr_lambda(n_epochs_keep: int, n_epochs_decay: int) -> Callable[[int], 
 
 class Pix2PixTrainer(BaseTrainer):
     """
-    Trainer for conditional SAR→EO translation using pix2pix with multi-scale PatchGAN.
+    Conditional SAR→EO trainer (original pix2pix).
 
     Generator:     G(sar) → fake_eo
     Discriminator: MultiScaleDiscriminator(cat([sar, eo])) → list of patch maps
-    Loss:          L_D = mean(hinge/bce across scales)
-                   L_G = mean(adv across scales) + lambda_L1 * L1(fake_eo, real_eo)
+    Loss:          L_D = mean(hinge/bce/lsgan across scales)
+                   L_G = mean(adv) + λ_L1·L1 + λ_VGG·VGG + λ_FM·FM
     """
 
-    # Narrow the discriminator type so pix2pix methods can call forward_with_features.
     _ms_disc: MultiScaleDiscriminator
 
     def __init__(
@@ -57,11 +54,9 @@ class Pix2PixTrainer(BaseTrainer):
         self.loss_type = LossType(cfg.training.loss_type)
         self.lambda_l1: float = cfg.training.lambda_l1
         self.lambda_vgg: float = float(cfg.training.get("lambda_vgg", 0.0))
-        _vgg_weights_path: str | None = cfg.training.get("vgg_weights_path", None)
+        _vgg_path: str | None = cfg.training.get("vgg_weights_path", None)
         self.vgg_loss: VGGPerceptualLoss | None = (
-            VGGPerceptualLoss(weights_path=_vgg_weights_path).to(device)
-            if self.lambda_vgg > 0
-            else None
+            VGGPerceptualLoss(weights_path=_vgg_path).to(device) if self.lambda_vgg > 0 else None
         )
         self.lambda_fm: float = float(cfg.training.get("lambda_fm", 0.0))
         self.lambda_gp: float = float(cfg.training.get("lambda_gp", 0.0))
@@ -90,7 +85,7 @@ class Pix2PixTrainer(BaseTrainer):
         self.sched_d = LambdaLR(self.opt_d, self._lr_lambda, last_epoch=start_epoch - 1)
 
     # ------------------------------------------------------------------
-    # Abstract implementations
+    # BaseTrainer interface
     # ------------------------------------------------------------------
 
     def _log_params(self) -> dict[str, object]:
@@ -102,6 +97,7 @@ class Pix2PixTrainer(BaseTrainer):
             "lambda_fm": self.lambda_fm,
             "lambda_gp": self.lambda_gp,
             "n_scales": len(self._ms_disc.discriminators),
+            "base_features": self.cfg.model.generator.base_features,
             "lr_g": self.cfg.training.lr_generator,
             "lr_d": self.cfg.training.lr_discriminator,
             "batch_size": self.cfg.training.batch_size,
@@ -137,11 +133,7 @@ class Pix2PixTrainer(BaseTrainer):
 
         n = min(8, self.fixed_sar.size(0))
         rows = torch.cat(
-            [
-                _to_3ch(self.fixed_sar[:n]),
-                _to_3ch(fake_eo[:n]),
-                _to_3ch(self.fixed_eo[:n]),
-            ]
+            [_to_3ch(self.fixed_sar[:n]), _to_3ch(fake_eo[:n]), _to_3ch(self.fixed_eo[:n])]
         )
         save_image(
             make_grid((rows + 1) / 2, nrow=n),
@@ -149,24 +141,27 @@ class Pix2PixTrainer(BaseTrainer):
         )
 
     # ------------------------------------------------------------------
-    # Core pix2pix step (kept for direct testability)
+    # Pix2pix training step (kept for direct testability)
     # ------------------------------------------------------------------
 
     def _train_step(
         self, sar: torch.Tensor, eo: torch.Tensor
     ) -> tuple[float, float, float, float, float, float]:
-        sar = sar.to(self.device)
-        eo = eo.to(self.device)
-
+        sar, eo = sar.to(self.device), eo.to(self.device)
         fake_eo = self.generator(sar)
+        d_loss, d_gp = self._d_step(sar, eo, fake_eo)
+        g_adv, g_l1, g_vgg, g_fm = self._g_step(sar, eo, fake_eo)
+        return d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp
 
-        # --- Discriminator (multi-scale) ---
+    def _d_step(
+        self, sar: torch.Tensor, eo: torch.Tensor, fake_eo: torch.Tensor
+    ) -> tuple[float, float]:
+        """Discriminator update. Returns (d_loss, d_gp)."""
         real_pair = torch.cat([sar, eo], dim=1)
         fake_pair = torch.cat([sar, fake_eo.detach()], dim=1)
 
         real_maps = self._ms_disc(real_pair)
         fake_maps = self._ms_disc(fake_pair)
-
         d_loss = multiscale_discriminator_loss(
             real_maps, fake_maps, self.loss_type, self.label_smoothing
         )
@@ -184,8 +179,13 @@ class Pix2PixTrainer(BaseTrainer):
         self.opt_d.zero_grad()
         d_loss.backward()  # type: ignore[no-untyped-call]
         self.opt_d.step()
+        return d_loss.item(), d_gp_val
 
-        # --- Generator ---
+    def _g_step(
+        self, sar: torch.Tensor, eo: torch.Tensor, fake_eo: torch.Tensor
+    ) -> tuple[float, float, float, float]:
+        """Generator update. Returns (g_adv, g_l1, g_vgg, g_fm)."""
+        real_pair = torch.cat([sar, eo], dim=1)
         fake_pair_g = torch.cat([sar, fake_eo], dim=1)
 
         g_fm_val = 0.0
@@ -202,7 +202,6 @@ class Pix2PixTrainer(BaseTrainer):
         g_adv = multiscale_generator_loss(fake_maps_g, self.loss_type)
         g_l1 = F.l1_loss(fake_eo, eo)
         g_loss = g_adv + self.lambda_l1 * g_l1
-
         if g_fm is not None:
             g_loss = g_loss + self.lambda_fm * g_fm
 
@@ -215,5 +214,4 @@ class Pix2PixTrainer(BaseTrainer):
         self.opt_g.zero_grad()
         g_loss.backward()  # type: ignore[no-untyped-call]
         self.opt_g.step()
-
-        return d_loss.item(), g_adv.item(), g_l1.item(), g_vgg_val, g_fm_val, d_gp_val
+        return g_adv.item(), g_l1.item(), g_vgg_val, g_fm_val

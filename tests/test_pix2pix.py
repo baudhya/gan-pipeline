@@ -442,6 +442,94 @@ def test_pix2pix_trainer_train_loop(
     assert (tmp_path / "checkpoints" / "epoch_0000.pt").exists()
 
 
+# --- _d_step / _g_step ---
+
+
+def test_pix2pix_d_step(cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path) -> None:
+    cfg = _pix2pix_cfg(cfg, tmp_path)
+    from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
+
+    g = UNetGenerator(in_channels=1, out_channels=3)
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
+    trainer = Pix2PixTrainer(g, d, cfg, device, tmp_path)
+
+    sar = torch.randn(1, 1, 256, 256, device=device)
+    eo = torch.randn(1, 3, 256, 256, device=device)
+    with torch.no_grad():
+        fake_eo = g(sar)
+    d_loss, d_gp = trainer._d_step(sar, eo, fake_eo)
+    assert isinstance(d_loss, float) and not (d_loss != d_loss)
+    assert d_gp == 0.0  # GP disabled
+
+
+def test_pix2pix_g_step(cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path) -> None:
+    cfg = _pix2pix_cfg(cfg, tmp_path)
+    from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
+
+    g = UNetGenerator(in_channels=1, out_channels=3)
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
+    trainer = Pix2PixTrainer(g, d, cfg, device, tmp_path)
+
+    sar = torch.randn(1, 1, 256, 256, device=device)
+    eo = torch.randn(1, 3, 256, 256, device=device)
+    fake_eo = g(sar)
+    g_adv, g_l1, g_vgg, g_fm = trainer._g_step(sar, eo, fake_eo)
+    assert all(isinstance(v, float) for v in [g_adv, g_l1, g_vgg, g_fm])
+    assert g_vgg == 0.0 and g_fm == 0.0  # disabled in default cfg
+
+
+# --- Pix2PixHDTrainer ---
+
+
+def _hd_cfg(cfg: omegaconf.DictConfig, tmp_path: Path) -> omegaconf.DictConfig:
+    with omegaconf.open_dict(cfg):
+        cfg.output_dir = str(tmp_path)
+        cfg.model.name = "pix2pixhd"
+        cfg.model.generator.ngf = 16
+        cfg.model.generator.n_downsampling = 2
+        cfg.model.generator.n_blocks = 3
+        cfg.training.loss_type = "lsgan"
+        cfg.training.lambda_l1 = 0.0
+        cfg.training.lambda_vgg = 0.0
+        cfg.training.lambda_fm = 0.0
+        cfg.training.lambda_gp = 0.0
+    return cfg
+
+
+def test_pix2pixhd_train_step(
+    cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path
+) -> None:
+    from gan_pipeline.models.resnet_gen import ResNetGenerator
+    from gan_pipeline.training.pix2pixhd_trainer import Pix2PixHDTrainer
+
+    cfg = _hd_cfg(cfg, tmp_path)
+    g = ResNetGenerator(in_channels=1, out_channels=3, ngf=16, n_downsampling=2, n_blocks=3)
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=2)
+    trainer = Pix2PixHDTrainer(g, d, cfg, device, tmp_path)
+
+    sar = torch.randn(1, 1, 256, 256)
+    eo = torch.randn(1, 3, 256, 256)
+    d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = trainer._train_step(sar, eo)
+    assert all(isinstance(v, float) for v in [d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp])
+    assert not any(v != v for v in [d_loss, g_adv])  # no NaN
+
+
+def test_pix2pixhd_log_params(
+    cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path
+) -> None:
+    from gan_pipeline.models.resnet_gen import ResNetGenerator
+    from gan_pipeline.training.pix2pixhd_trainer import Pix2PixHDTrainer
+
+    cfg = _hd_cfg(cfg, tmp_path)
+    g = ResNetGenerator(in_channels=1, out_channels=3, ngf=16, n_downsampling=2, n_blocks=3)
+    d = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=2)
+    trainer = Pix2PixHDTrainer(g, d, cfg, device, tmp_path)
+
+    params = trainer._log_params()
+    assert "ngf" in params and "n_downsampling" in params and "n_blocks" in params
+    assert "base_features" not in params
+
+
 # --- Paired dataset ---
 
 

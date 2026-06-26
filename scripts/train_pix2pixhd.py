@@ -12,7 +12,7 @@ from omegaconf import DictConfig
 from gan_pipeline.data.paired_dataset import get_paired_dataloader
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
 from gan_pipeline.models.resnet_gen import ResNetGenerator
-from gan_pipeline.training.pix2pix_trainer import Pix2PixTrainer
+from gan_pipeline.training.pix2pixhd_trainer import Pix2PixHDTrainer
 from gan_pipeline.utils import setup_logging
 
 
@@ -70,7 +70,7 @@ def main(cfg: DictConfig) -> None:
     logger.info(f"Generator  params: {sum(p.numel() for p in generator.parameters()):,}")
     logger.info(f"Discriminator params: {sum(p.numel() for p in discriminator.parameters()):,}")
 
-    trainer = Pix2PixTrainer(generator, discriminator, cfg, device, output_dir)
+    trainer = Pix2PixHDTrainer(generator, discriminator, cfg, device, output_dir)
 
     if cfg.resume:
         trainer.resume(Path(cfg.resume))
