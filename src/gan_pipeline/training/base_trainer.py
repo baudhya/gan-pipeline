@@ -129,6 +129,7 @@ class BaseTrainer(ABC):
                             f"Epoch {epoch}/{self.cfg.training.epochs} "
                             f"[{i}/{len(dataloader)}]  {parts}"
                         )
+                        self._save_samples(epoch * 10000 + i)
 
                 avgs = {k: sum(vs) / len(vs) for k, vs in accum.items()}
                 mlflow.log_metrics(avgs, step=epoch)
