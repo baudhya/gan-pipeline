@@ -107,10 +107,40 @@ Two GitHub Actions workflows (`.github/workflows/`):
 
 ## Architecture
 
+### Trainer hierarchy
+
+```
+BaseTrainer                  (training/base_trainer.py — ABC)
+  └── Pix2PixTrainer         (training/pix2pix_trainer.py)
+```
+
+**`BaseTrainer`** owns all shared boilerplate:
+- `__init__`: moves models to device, creates Adam optimizers for G and D, makes output dirs
+- `resume(checkpoint_path)`: restores model + optimizer states
+- `train(dataloader)`: MLflow-instrumented epoch loop — calls `_step_batch` per batch, averages metrics, logs to MLflow, saves samples and checkpoints, steps schedulers
+
+**Subclasses must implement:**
+
+| Method | Purpose |
+|---|---|
+| `_log_params()` | Return `dict` of hyperparameters to log at run start |
+| `_step_batch(batch)` | One forward/backward pass; return `dict[str, float]` of metrics |
+| `_save_samples(epoch)` | Write visualisation images for the epoch |
+
+**Optional scheduler hooks** (all no-ops in base):
+
+| Hook | When called |
+|---|---|
+| `_build_schedulers()` | Once, after optimizers are created in `__init__` |
+| `_step_schedulers()` | End of every epoch |
+| `_restore_schedulers(start_epoch)` | After `resume()`, to rewind scheduler state |
+
+**To add a new trainer:** subclass `BaseTrainer`, implement the three abstract methods, override scheduler hooks if needed.
+
 ### Conditional pipeline (pix2pix) — main use case
 
 **Entry point:** `scripts/train_pix2pix.py`  
-**Trainer:** `src/gan_pipeline/training/pix2pix_trainer.py` — `Pix2PixTrainer`
+**Trainer:** `Pix2PixTrainer(BaseTrainer)` in `training/pix2pix_trainer.py`
 
 Data flow:
 1. `get_paired_dataloader` → yields `{"sar": Tensor, "eo": Tensor}` dicts
@@ -118,6 +148,8 @@ Data flow:
 3. `MultiScaleDiscriminator(cat([sar, eo]))` → list of N patch maps (finest→coarsest)
 4. Losses averaged across scales via `multiscale_discriminator_loss` / `multiscale_generator_loss`
 5. Generator total loss: `g_adv + λ_L1·L1(fake_eo, real_eo) + λ_VGG·L_VGG + λ_FM·L_FM`
+
+`Pix2PixTrainer` stores `self._ms_disc: MultiScaleDiscriminator` as a typed alias over `self.discriminator` (typed `nn.Module` in the base) to call `forward_with_features` without casts. `_train_step(sar, eo)` is kept as a separate method so tests can call it directly.
 
 ### Model hierarchy
 
@@ -202,6 +234,8 @@ Invoke with `/skill-name` in Claude Code. Files live in `.claude/skills/`.
 - **`/data/` in `.gitignore`** is root-anchored intentionally — `data/` would also exclude `src/gan_pipeline/data/`.
 - **`*.pth` and `*.pt` are gitignored** — VGG weights and checkpoints are never committed. `weights/.gitkeep` tracks the directory only.
 - **`MultiScaleDiscriminator` iteration:** `nn.ModuleList` elements type as `nn.Module`; use `cast(PatchGANDiscriminator, disc)` when calling `forward_with_features` — already done in `multiscale_disc.py`.
+- **`BaseTrainer.discriminator` is typed `nn.Module`** — `MultiScaleDiscriminator.forward()` returns `list[Tensor]`, violating `BaseDiscriminator`'s `Tensor` return, so the base uses `nn.Module`. Pix2PixTrainer stores `self._ms_disc: MultiScaleDiscriminator` as a typed alias for calls that need `forward_with_features`.
+- **MLflow patch target for tests** is `gan_pipeline.training.base_trainer.mlflow` — the training loop lives in `BaseTrainer`, not in the subclass.
 - **mypy strict mode** is enforced — all new code in `src/` must pass `mypy src/` with no errors. Use `# type: ignore[no-any-return]` for torch return types where needed.
 - **MLflow** logs automatically on every training run to `mlruns/` — no setup needed.
 - **Do not add `Co-Authored-By:` lines** to git commits — only the repo owner is the commit author.
