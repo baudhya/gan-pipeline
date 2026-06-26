@@ -245,13 +245,13 @@ def test_pix2pix_train_step(
 
     sar = torch.randn(2, 1, 256, 256)
     eo = torch.randn(2, 3, 256, 256)
-    d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = trainer._train_step(sar, eo)
+    m = trainer._train_step(sar, eo)
 
-    assert all(isinstance(v, float) for v in [d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp])
-    assert all(not (v != v) for v in [d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp])  # no NaN
-    assert g_vgg == 0.0  # VGG disabled
-    assert g_fm == 0.0  # FM disabled
-    assert d_gp == 0.0  # GP disabled (not wasserstein)
+    assert all(isinstance(v, float) for v in m.values())
+    assert all(not (v != v) for v in m.values())  # no NaN
+    assert m["g_vgg"] == 0.0  # VGG disabled
+    assert m["g_fm"] == 0.0  # FM disabled
+    assert m["d_gp"] == 0.0  # GP disabled
 
 
 def test_multiscale_gradient_penalty() -> None:
@@ -287,11 +287,11 @@ def test_pix2pix_train_step_wasserstein_gp(cfg, device: torch.device, tmp_path: 
 
     sar = torch.randn(2, 1, 256, 256)
     eo = torch.randn(2, 3, 256, 256)
-    d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = trainer._train_step(sar, eo)
+    m = trainer._train_step(sar, eo)
 
-    assert all(isinstance(v, float) for v in [d_loss, g_adv, g_l1, d_gp])
-    assert all(not (v != v) for v in [d_loss, g_adv, g_l1, d_gp])  # no NaN
-    assert d_gp > 0.0  # GP was computed
+    assert all(isinstance(v, float) for v in m.values())
+    assert all(not (v != v) for v in m.values())  # no NaN
+    assert m["d_gp"] > 0.0  # GP was computed
 
 
 def _pix2pix_cfg(cfg: omegaconf.DictConfig, tmp_path: Path) -> omegaconf.DictConfig:
@@ -323,8 +323,8 @@ def test_pix2pix_train_step_with_fm(
 
     sar = torch.randn(2, 1, 256, 256)
     eo = torch.randn(2, 3, 256, 256)
-    d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = trainer._train_step(sar, eo)
-    assert g_fm > 0.0
+    m = trainer._train_step(sar, eo)
+    assert m["g_fm"] > 0.0
 
 
 def test_pix2pix_train_step_with_vgg(
@@ -349,8 +349,8 @@ def test_pix2pix_train_step_with_vgg(
 
     sar = torch.randn(2, 1, 256, 256)
     eo = torch.randn(2, 3, 256, 256)
-    d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = trainer._train_step(sar, eo)
-    assert g_vgg > 0.0
+    m = trainer._train_step(sar, eo)
+    assert m["g_vgg"] > 0.0
 
 
 def test_pix2pix_trainer_resume(
@@ -457,9 +457,9 @@ def test_pix2pix_d_step(cfg: omegaconf.DictConfig, device: torch.device, tmp_pat
     eo = torch.randn(1, 3, 256, 256, device=device)
     with torch.no_grad():
         fake_eo = g(sar)
-    d_loss, d_gp = trainer._d_step(sar, eo, fake_eo)
-    assert isinstance(d_loss, float) and not (d_loss != d_loss)
-    assert d_gp == 0.0  # GP disabled
+    m = trainer._d_step(sar, eo, fake_eo)
+    assert isinstance(m["d_loss"], float) and not (m["d_loss"] != m["d_loss"])
+    assert m["d_gp"] == 0.0  # GP disabled
 
 
 def test_pix2pix_g_step(cfg: omegaconf.DictConfig, device: torch.device, tmp_path: Path) -> None:
@@ -473,9 +473,9 @@ def test_pix2pix_g_step(cfg: omegaconf.DictConfig, device: torch.device, tmp_pat
     sar = torch.randn(1, 1, 256, 256, device=device)
     eo = torch.randn(1, 3, 256, 256, device=device)
     fake_eo = g(sar)
-    g_adv, g_l1, g_vgg, g_fm = trainer._g_step(sar, eo, fake_eo)
-    assert all(isinstance(v, float) for v in [g_adv, g_l1, g_vgg, g_fm])
-    assert g_vgg == 0.0 and g_fm == 0.0  # disabled in default cfg
+    m = trainer._g_step(sar, eo, fake_eo)
+    assert all(isinstance(v, float) for v in m.values())
+    assert m["g_vgg"] == 0.0 and m["g_fm"] == 0.0  # disabled in default cfg
 
 
 # --- Pix2PixHDTrainer ---
@@ -489,10 +489,8 @@ def _hd_cfg(cfg: omegaconf.DictConfig, tmp_path: Path) -> omegaconf.DictConfig:
         cfg.model.generator.n_downsampling = 2
         cfg.model.generator.n_blocks = 3
         cfg.training.loss_type = "lsgan"
-        cfg.training.lambda_l1 = 0.0
         cfg.training.lambda_vgg = 0.0
         cfg.training.lambda_fm = 0.0
-        cfg.training.lambda_gp = 0.0
     return cfg
 
 
@@ -509,9 +507,11 @@ def test_pix2pixhd_train_step(
 
     sar = torch.randn(1, 1, 256, 256)
     eo = torch.randn(1, 3, 256, 256)
-    d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = trainer._train_step(sar, eo)
-    assert all(isinstance(v, float) for v in [d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp])
-    assert not any(v != v for v in [d_loss, g_adv])  # no NaN
+    m = trainer._train_step(sar, eo)
+    assert all(isinstance(v, float) for v in m.values())
+    assert not any(v != v for v in m.values())  # no NaN
+    assert "g_l1" not in m  # HD does not use L1
+    assert "d_gp" not in m  # HD has no gradient penalty
 
 
 def test_pix2pixhd_log_params(

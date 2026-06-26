@@ -1,11 +1,8 @@
-from collections.abc import Callable
 from pathlib import Path
 
 import torch
 import torch.nn.functional as F
 from omegaconf import DictConfig
-from torch.optim.lr_scheduler import LambdaLR
-from torchvision.utils import make_grid, save_image
 
 from gan_pipeline.models.base import BaseGenerator
 from gan_pipeline.models.losses import (
@@ -18,27 +15,16 @@ from gan_pipeline.models.losses import (
     r1_gradient_penalty,
 )
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
-from gan_pipeline.training.base_trainer import BaseTrainer
+from gan_pipeline.training.paired_trainer import PairedGANTrainer
 
 
-def _make_lr_lambda(n_epochs_keep: int, n_epochs_decay: int) -> Callable[[int], float]:
-    def _lambda(epoch: int) -> float:
-        return 1.0 - max(0, epoch - n_epochs_keep) / float(n_epochs_decay + 1)
-
-    return _lambda
-
-
-class Pix2PixTrainer(BaseTrainer):
+class Pix2PixTrainer(PairedGANTrainer):
     """
-    Conditional SAR→EO trainer (original pix2pix).
+    Original pix2pix: U-Net generator + single-scale PatchGAN.
 
-    Generator:     G(sar) → fake_eo
-    Discriminator: MultiScaleDiscriminator(cat([sar, eo])) → list of patch maps
-    Loss:          L_D = mean(hinge/bce/lsgan across scales)
-                   L_G = mean(adv) + λ_L1·L1 + λ_VGG·VGG + λ_FM·FM
+    Loss: BCE + λ_L1·L1 + optional R1 gradient penalty.
+    VGG and feature matching are supported but off by default.
     """
-
-    _ms_disc: MultiScaleDiscriminator
 
     def __init__(
         self,
@@ -49,9 +35,7 @@ class Pix2PixTrainer(BaseTrainer):
         output_dir: Path,
     ) -> None:
         super().__init__(generator, discriminator, cfg, device, output_dir)
-        self._ms_disc = discriminator
 
-        self.loss_type = LossType(cfg.training.loss_type)
         self.lambda_l1: float = cfg.training.lambda_l1
         self.lambda_vgg: float = float(cfg.training.get("lambda_vgg", 0.0))
         _vgg_path: str | None = cfg.training.get("vgg_weights_path", None)
@@ -60,33 +44,6 @@ class Pix2PixTrainer(BaseTrainer):
         )
         self.lambda_fm: float = float(cfg.training.get("lambda_fm", 0.0))
         self.lambda_gp: float = float(cfg.training.get("lambda_gp", 0.0))
-        self.label_smoothing: float = float(cfg.training.get("label_smoothing", 1.0))
-
-        self.fixed_sar: torch.Tensor | None = None
-        self.fixed_eo: torch.Tensor | None = None
-
-    # ------------------------------------------------------------------
-    # Scheduler hooks
-    # ------------------------------------------------------------------
-
-    def _build_schedulers(self) -> None:
-        n_decay = self.cfg.training.epochs // 2
-        n_keep = self.cfg.training.epochs - n_decay
-        self._lr_lambda = _make_lr_lambda(n_keep, n_decay)
-        self.sched_g = LambdaLR(self.opt_g, self._lr_lambda)
-        self.sched_d = LambdaLR(self.opt_d, self._lr_lambda)
-
-    def _step_schedulers(self) -> None:
-        self.sched_g.step()
-        self.sched_d.step()
-
-    def _restore_schedulers(self, start_epoch: int) -> None:
-        self.sched_g = LambdaLR(self.opt_g, self._lr_lambda, last_epoch=start_epoch - 1)
-        self.sched_d = LambdaLR(self.opt_d, self._lr_lambda, last_epoch=start_epoch - 1)
-
-    # ------------------------------------------------------------------
-    # BaseTrainer interface
-    # ------------------------------------------------------------------
 
     def _log_params(self) -> dict[str, object]:
         return {
@@ -103,60 +60,9 @@ class Pix2PixTrainer(BaseTrainer):
             "batch_size": self.cfg.training.batch_size,
         }
 
-    def _step_batch(self, batch: dict[str, torch.Tensor]) -> dict[str, float]:
-        sar: torch.Tensor = batch["sar"]
-        eo: torch.Tensor = batch["eo"]
-
-        if self.fixed_sar is None:
-            self.fixed_sar = sar[:8].to(self.device)
-            self.fixed_eo = eo[:8].to(self.device)
-
-        d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp = self._train_step(sar, eo)
-        return {
-            "d_loss": d_loss,
-            "g_adv": g_adv,
-            "g_l1": g_l1,
-            "g_vgg": g_vgg,
-            "g_fm": g_fm,
-            "d_gp": d_gp,
-        }
-
-    def _save_samples(self, epoch: int) -> None:
-        assert self.fixed_sar is not None and self.fixed_eo is not None
-        self.generator.eval()
-        with torch.no_grad():
-            fake_eo = self.generator(self.fixed_sar)
-        self.generator.train()
-
-        def _to_3ch(t: torch.Tensor) -> torch.Tensor:
-            return t.expand(-1, 3, -1, -1) if t.shape[1] == 1 else t
-
-        n = min(8, self.fixed_sar.size(0))
-        rows = torch.cat(
-            [_to_3ch(self.fixed_sar[:n]), _to_3ch(fake_eo[:n]), _to_3ch(self.fixed_eo[:n])]
-        )
-        save_image(
-            make_grid((rows + 1) / 2, nrow=n),
-            self.output_dir / "samples" / f"epoch_{epoch:04d}.png",
-        )
-
-    # ------------------------------------------------------------------
-    # Pix2pix training step (kept for direct testability)
-    # ------------------------------------------------------------------
-
-    def _train_step(
-        self, sar: torch.Tensor, eo: torch.Tensor
-    ) -> tuple[float, float, float, float, float, float]:
-        sar, eo = sar.to(self.device), eo.to(self.device)
-        fake_eo = self.generator(sar)
-        d_loss, d_gp = self._d_step(sar, eo, fake_eo)
-        g_adv, g_l1, g_vgg, g_fm = self._g_step(sar, eo, fake_eo)
-        return d_loss, g_adv, g_l1, g_vgg, g_fm, d_gp
-
     def _d_step(
         self, sar: torch.Tensor, eo: torch.Tensor, fake_eo: torch.Tensor
-    ) -> tuple[float, float]:
-        """Discriminator update. Returns (d_loss, d_gp)."""
+    ) -> dict[str, float]:
         real_pair = torch.cat([sar, eo], dim=1)
         fake_pair = torch.cat([sar, fake_eo.detach()], dim=1)
 
@@ -179,12 +85,11 @@ class Pix2PixTrainer(BaseTrainer):
         self.opt_d.zero_grad()
         d_loss.backward()  # type: ignore[no-untyped-call]
         self.opt_d.step()
-        return d_loss.item(), d_gp_val
+        return {"d_loss": d_loss.item(), "d_gp": d_gp_val}
 
     def _g_step(
         self, sar: torch.Tensor, eo: torch.Tensor, fake_eo: torch.Tensor
-    ) -> tuple[float, float, float, float]:
-        """Generator update. Returns (g_adv, g_l1, g_vgg, g_fm)."""
+    ) -> dict[str, float]:
         real_pair = torch.cat([sar, eo], dim=1)
         fake_pair_g = torch.cat([sar, fake_eo], dim=1)
 
@@ -214,4 +119,4 @@ class Pix2PixTrainer(BaseTrainer):
         self.opt_g.zero_grad()
         g_loss.backward()  # type: ignore[no-untyped-call]
         self.opt_g.step()
-        return g_adv.item(), g_l1.item(), g_vgg_val, g_fm_val
+        return {"g_adv": g_adv.item(), "g_l1": g_l1.item(), "g_vgg": g_vgg_val, "g_fm": g_fm_val}
