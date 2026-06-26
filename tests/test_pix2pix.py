@@ -392,6 +392,9 @@ def test_pix2pix_trainer_train_loop(
 
     assert (tmp_path / "samples" / "epoch_0000.png").exists()
     assert (tmp_path / "checkpoints" / "epoch_0000.pt").exists()
+    mock_mlflow.log_artifact.assert_called_once_with(
+        str(tmp_path / "samples" / "epoch_0000.png"), artifact_path="samples"
+    )
 
 
 # --- _d_step / _g_step ---

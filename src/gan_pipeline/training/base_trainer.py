@@ -135,6 +135,10 @@ class BaseTrainer(ABC):
 
                 if epoch % self.cfg.training.sample_every == 0:
                     self._save_samples(epoch)
+                    mlflow.log_artifact(
+                        str(self.output_dir / "samples" / f"epoch_{epoch:04d}.png"),
+                        artifact_path="samples",
+                    )
 
                 if epoch % self.cfg.training.save_every == 0:
                     save_checkpoint(
