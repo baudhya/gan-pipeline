@@ -4,33 +4,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 import torch
 
-from gan_pipeline.models import DCGANDiscriminator, DCGANGenerator
 from gan_pipeline.models.losses import (
     LossType,
     discriminator_loss,
     generator_loss,
-    gradient_penalty,
-    r1_gradient_penalty,
 )
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
 from gan_pipeline.models.resnet_gen import ResnetBlock, ResNetGenerator
-
-
-@pytest.mark.parametrize("image_size", [32, 64, 128])
-def test_generator_output_shape(image_size: int) -> None:
-    g = DCGANGenerator(latent_dim=100, channels=3, image_size=image_size)
-    z = torch.randn(4, 100)
-    out = g(z)
-    assert out.shape == (4, 3, image_size, image_size)
-    assert out.min() >= -1.0 and out.max() <= 1.0
-
-
-@pytest.mark.parametrize("image_size", [32, 64, 128])
-def test_discriminator_output_shape(image_size: int) -> None:
-    d = DCGANDiscriminator(channels=3, image_size=image_size)
-    x = torch.randn(4, 3, image_size, image_size)
-    out = d(x)
-    assert out.shape == (4,)
 
 
 @pytest.mark.parametrize("loss_type", list(LossType))
@@ -47,38 +27,24 @@ def test_discriminator_loss(loss_type: LossType) -> None:
     assert torch.isfinite(loss)
 
 
-def test_gradient_penalty() -> None:
-    d = DCGANDiscriminator(channels=3, image_size=64)
-    gp = gradient_penalty(
-        d, torch.randn(4, 3, 64, 64), torch.randn(4, 3, 64, 64), torch.device("cpu")
-    )
-    assert gp.shape == torch.Size([])
-    assert torch.isfinite(gp)
-
-
 @pytest.mark.parametrize("loss_type", [LossType.BCE, LossType.LSGAN])
 def test_discriminator_loss_label_smoothing(loss_type: LossType) -> None:
-    real = torch.ones(8) * 2.0  # large positive logits → D confident on reals
+    real = torch.ones(8) * 2.0
     fake = torch.ones(8) * -2.0
     loss_smooth = discriminator_loss(real, fake, loss_type, label_smoothing=0.9)
     loss_hard = discriminator_loss(real, fake, loss_type, label_smoothing=1.0)
-    # smoothed real target (0.9) gives higher loss than hard target (1.0) when D is confident
     assert loss_smooth > loss_hard
 
 
 def test_r1_gradient_penalty() -> None:
+    from gan_pipeline.models.losses import r1_gradient_penalty
+
     disc = MultiScaleDiscriminator(sar_channels=1, eo_channels=3, n_scales=1)
-    real_pair = torch.randn(1, 4, 64, 64)  # sar(1) + eo(3) = 4 channels
+    real_pair = torch.randn(1, 4, 64, 64)
     gp = r1_gradient_penalty(disc, real_pair)
     assert gp.shape == torch.Size([])
     assert torch.isfinite(gp)
     assert gp >= 0
-
-
-def test_generator_sample() -> None:
-    g = DCGANGenerator(latent_dim=100, channels=3, image_size=64)
-    samples = g.sample(8, torch.device("cpu"))
-    assert samples.shape == (8, 3, 64, 64)
 
 
 def test_generator_loss_invalid_type() -> None:
@@ -128,7 +94,6 @@ def test_resnet_block_residual() -> None:
     x = torch.randn(1, 32, 16, 16)
     out = block(x)
     assert out.shape == x.shape
-    # output differs from input (block is not zero-initialised)
     assert not torch.allclose(out, x)
 
 

@@ -1,4 +1,3 @@
-from gan_pipeline.data.dataset import get_dataloader
 from gan_pipeline.data.paired_dataset import get_paired_dataloader
 from gan_pipeline.data.sentinel_utils import (
     linear_to_db,
@@ -11,7 +10,6 @@ from gan_pipeline.data.sentinel_utils import (
 from gan_pipeline.data.transforms import get_transforms
 
 __all__ = [
-    "get_dataloader",
     "get_paired_dataloader",
     "get_transforms",
     "linear_to_db",

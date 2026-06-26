@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Production-grade **SAR→EO image translation** pipeline built on pix2pix. The main model translates Sentinel-1 SAR images into Sentinel-2 optical images using a U-Net generator and a multi-scale PatchGAN discriminator. A secondary unconditional DCGAN pipeline shares models and utilities.
+**SAR→EO image translation** pipeline implementing pix2pix and pix2pixHD. Translates Sentinel-1 SAR images into Sentinel-2 optical images using a U-Net or ResNet generator and a multi-scale PatchGAN discriminator.
 
 **Owner:** Siddharth Baudh  
 **Primary language:** Python 3.10+  
@@ -46,7 +46,7 @@ make clean-all                      # clean + clean-venv
 
 ```bash
 # Tests
-pytest                              # run all 68 tests
+pytest                              # run all 96 tests
 pytest tests/test_pix2pix.py -v     # single file
 pytest -k "multiscale or sentinel"  # pattern match
 
@@ -65,7 +65,6 @@ python scripts/train_pix2pix.py                                              # o
 python scripts/train_pix2pix.py experiment_name=run1 training.epochs=50     # named experiment
 python scripts/train_pix2pixhd.py                                            # pix2pixHD (multi-scale, VGG + FM losses, hinge)
 python scripts/train_pix2pixhd.py experiment_name=hd1 training.epochs=200   # named pix2pixHD run
-python scripts/train.py model=dcgan training=default data=celeba             # unconditional DCGAN
 
 # Evaluation
 python scripts/evaluate.py checkpoint=outputs/.../epoch_0199.pt real_dir=data/sar_eo/test
@@ -120,21 +119,14 @@ Data flow:
 4. Losses averaged across scales via `multiscale_discriminator_loss` / `multiscale_generator_loss`
 5. Generator total loss: `g_adv + λ_L1·L1(fake_eo, real_eo) + λ_VGG·L_VGG + λ_FM·L_FM`
 
-### Unconditional pipeline (DCGAN)
-
-**Entry point:** `scripts/train.py`  
-**Trainer:** `src/gan_pipeline/training/trainer.py` — `GANTrainer`  
-Uses `DCGANGenerator` + `DCGANDiscriminator`. Latent vector as input, no conditioning.
-
 ### Model hierarchy
 
 ```
 BaseGenerator / BaseDiscriminator   (models/base.py — ABCs)
   ├── UNetGenerator                 (models/unet.py — 8-level encoder/decoder, skip connections)
-  ├── DCGANGenerator                (models/dcgan.py)
-  ├── PatchGANDiscriminator         (models/patchgan.py — 70×70 receptive field)
-  │     └── wrapped by MultiScaleDiscriminator  (models/multiscale_disc.py)
-  └── DCGANDiscriminator            (models/dcgan.py)
+  ├── ResNetGenerator               (models/resnet_gen.py — pix2pixHD generator)
+  └── PatchGANDiscriminator         (models/patchgan.py — 70×70 receptive field)
+        └── wrapped by MultiScaleDiscriminator  (models/multiscale_disc.py)
 ```
 
 `MultiScaleDiscriminator.forward()` returns `list[Tensor]` (one patch map per scale), not a single tensor — this is why `multiscale_*_loss` functions in `models/losses.py` exist separately from the single-scale variants.
@@ -153,10 +145,11 @@ Set any lambda to `0.0` to disable that loss term entirely.
 ### Configuration (Hydra)
 
 ```
-configs/config.yaml           ← root; selects defaults
-configs/model/pix2pix.yaml    ← generator/discriminator features, n_scales
-configs/training/pix2pix.yaml ← lr, loss_type, lambdas, epochs, vgg_weights_path
-configs/data/sar_eo.yaml      ← root path, image_size, sar_channels, dataset_format
+configs/config_pix2pix.yaml      ← root for pix2pix; selects defaults
+configs/config_pix2pixhd.yaml    ← root for pix2pixHD; selects defaults
+configs/model/pix2pix.yaml       ← generator/discriminator features, n_scales
+configs/training/pix2pix.yaml    ← lr, loss_type, lambdas, epochs, vgg_weights_path
+configs/data/sar_eo.yaml         ← root path, image_size, sar_channels, dataset_format
 ```
 
 CLI overrides: `python scripts/train_pix2pix.py training.loss_type=bce model.discriminator.n_scales=2`

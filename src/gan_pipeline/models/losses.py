@@ -5,7 +5,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models
 
-from gan_pipeline.models.base import BaseDiscriminator
 from gan_pipeline.models.multiscale_disc import MultiScaleDiscriminator
 
 
@@ -201,25 +200,3 @@ def r1_gradient_penalty(
         gp_per_scale.append(grads.pow(2).view(grads.size(0), -1).sum(dim=1).mean())
 
     return torch.stack(gp_per_scale).mean()
-
-
-def gradient_penalty(
-    discriminator: BaseDiscriminator,
-    real: torch.Tensor,
-    fake: torch.Tensor,
-    device: torch.device,
-) -> torch.Tensor:
-    batch_size = real.size(0)
-    alpha = torch.rand(batch_size, 1, 1, 1, device=device)
-    interpolated = (alpha * real + (1 - alpha) * fake.detach()).requires_grad_(True)
-
-    logits = discriminator(interpolated)
-    grad = torch.autograd.grad(
-        outputs=logits,
-        inputs=interpolated,
-        grad_outputs=torch.ones_like(logits),
-        create_graph=True,
-        retain_graph=True,
-    )[0]
-    grad = grad.view(batch_size, -1)
-    return ((grad.norm(2, dim=1) - 1) ** 2).mean()  # type: ignore[no-any-return]

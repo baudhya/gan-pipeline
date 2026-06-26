@@ -2,10 +2,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import torch
 from PIL import Image
 
-from gan_pipeline.data.dataset import get_dataloader
 from gan_pipeline.data.paired_dataset import (
     SentinelS1S2Dataset,
     SeparateDirPairedDataset,
@@ -156,23 +154,6 @@ def test_get_paired_dataloader_sentinel(tmp_path: Path) -> None:
     batch = next(iter(loader))
     assert batch["sar"].shape == (2, 1, 64, 64)
     assert batch["eo"].shape == (2, 3, 64, 64)
-
-
-# --- get_dataloader (ImageFolder) ---
-
-
-def test_get_dataloader_imagefolder(tmp_path: Path) -> None:
-    cls_dir = tmp_path / "cls_a"
-    cls_dir.mkdir()
-    for i in range(4):
-        img = Image.fromarray(np.random.randint(0, 255, (80, 80, 3), dtype=np.uint8))
-        img.save(cls_dir / f"{i}.png")
-    loader = get_dataloader(
-        str(tmp_path), 32, [0.5] * 3, [0.5] * 3, batch_size=2, num_workers=0, shuffle=False
-    )
-    batch: torch.Tensor
-    batch, _ = next(iter(loader))
-    assert batch.shape == (2, 3, 32, 32)
 
 
 # --- setup_logging ---

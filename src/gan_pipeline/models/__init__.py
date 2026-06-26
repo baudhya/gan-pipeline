@@ -1,12 +1,10 @@
 from gan_pipeline.models.base import BaseDiscriminator, BaseGenerator
-from gan_pipeline.models.dcgan import DCGANDiscriminator, DCGANGenerator
 from gan_pipeline.models.losses import (
     LossType,
     VGGPerceptualLoss,
     discriminator_loss,
     feature_matching_loss,
     generator_loss,
-    gradient_penalty,
     multiscale_discriminator_loss,
     multiscale_generator_loss,
 )
@@ -20,8 +18,6 @@ __all__ = [
     "BaseDiscriminator",
     "ResNetGenerator",
     "UNetGenerator",
-    "DCGANGenerator",
-    "DCGANDiscriminator",
     "PatchGANDiscriminator",
     "MultiScaleDiscriminator",
     "LossType",
@@ -29,7 +25,6 @@ __all__ = [
     "generator_loss",
     "discriminator_loss",
     "feature_matching_loss",
-    "gradient_penalty",
     "multiscale_discriminator_loss",
     "multiscale_generator_loss",
 ]

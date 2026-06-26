@@ -1,6 +1,0 @@
-name: dcgan
-latent_dim: 100
-generator:
-  base_features: 64
-discriminator:
-  base_features: 64

@@ -1,38 +1,29 @@
-"""Tests for inference (generate) and evaluation (metrics) modules."""
+"""Tests for inference (load_generator) and evaluation (metrics) modules."""
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import torch
 
-from gan_pipeline.models import DCGANGenerator
+from gan_pipeline.models.unet import UNetGenerator
 from gan_pipeline.utils.checkpointing import save_checkpoint
 
 
 def test_load_generator(tmp_path: Path) -> None:
     from gan_pipeline.inference.generate import load_generator
 
-    g = DCGANGenerator(latent_dim=100, channels=3, image_size=64)
-    d = DCGANGenerator(latent_dim=100, channels=3, image_size=64)  # dummy discriminator slot
+    g = UNetGenerator(in_channels=1, out_channels=3)
+    d = UNetGenerator(in_channels=1, out_channels=3)  # dummy discriminator slot
     opt_g = torch.optim.Adam(g.parameters())
     opt_d = torch.optim.Adam(d.parameters())
 
     ckpt = tmp_path / "gen.pt"
     save_checkpoint(ckpt, 10, g, d, opt_g, opt_d, {"d_loss": 0.1, "g_loss": 0.2})
 
-    g2 = DCGANGenerator(latent_dim=100, channels=3, image_size=64)
+    g2 = UNetGenerator(in_channels=1, out_channels=3)
     loaded = load_generator(ckpt, g2, torch.device("cpu"))
     assert loaded is g2
     assert not loaded.training  # eval mode
-
-
-def test_generate_images(tmp_path: Path) -> None:
-    from gan_pipeline.inference.generate import generate_images
-
-    g = DCGANGenerator(latent_dim=100, channels=3, image_size=64)
-    out = generate_images(g, n=4, device=torch.device("cpu"), output_dir=tmp_path, batch_size=2)
-    assert out.exists()
-    assert out.name == "generated.png"
 
 
 def test_compute_fid_import_error() -> None:
