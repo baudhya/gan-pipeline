@@ -1,7 +1,7 @@
 epochs: 200
 batch_size: 1
 lr_generator: 0.0002
-lr_discriminator: 0.0001  # TTUR: D learns slower than G to prevent collapse
+lr_discriminator: 0.0002  # paper: same LR for G and D
 beta1: 0.5
 beta2: 0.999
 loss_type: lsgan      # paper uses LSGAN (least-squares adversarial loss)

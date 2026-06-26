@@ -16,8 +16,8 @@ import torch.nn as nn
 from gan_pipeline.models.base import BaseGenerator
 
 
-def _norm(num_channels: int) -> nn.GroupNorm:
-    return nn.GroupNorm(min(32, num_channels), num_channels)
+def _norm(num_channels: int) -> nn.InstanceNorm2d:
+    return nn.InstanceNorm2d(num_channels, affine=True)
 
 
 class ResnetBlock(nn.Module):
@@ -105,7 +105,7 @@ class ResNetGenerator(BaseGenerator):
         for m in self.modules():
             if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
                 nn.init.normal_(m.weight, 0.0, 0.02)
-            elif isinstance(m, nn.GroupNorm) and m.weight is not None:
+            elif isinstance(m, nn.InstanceNorm2d) and m.weight is not None:
                 nn.init.normal_(m.weight, 1.0, 0.02)
                 nn.init.zeros_(m.bias)
 

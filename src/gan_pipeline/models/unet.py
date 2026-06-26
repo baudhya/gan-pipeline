@@ -9,7 +9,7 @@ from gan_pipeline.models.base import BaseGenerator
 def _enc_block(in_ch: int, out_ch: int, bn: bool = True) -> nn.Sequential:
     layers: list[nn.Module] = [nn.Conv2d(in_ch, out_ch, 4, 2, 1, bias=not bn)]
     if bn:
-        layers.append(nn.GroupNorm(min(32, out_ch), out_ch))
+        layers.append(nn.InstanceNorm2d(out_ch, affine=True))
     layers.append(nn.LeakyReLU(0.2, inplace=True))
     return nn.Sequential(*layers)
 
@@ -20,7 +20,7 @@ def _dec_block(in_ch: int, out_ch: int, dropout: bool = False) -> nn.Sequential:
     layers: list[nn.Module] = [
         nn.ReLU(inplace=False),
         nn.ConvTranspose2d(in_ch, out_ch, 4, 2, 1, bias=False),
-        nn.GroupNorm(min(32, out_ch), out_ch),
+        nn.InstanceNorm2d(out_ch, affine=True),
     ]
     if dropout:
         layers.append(nn.Dropout(0.5))
@@ -75,7 +75,7 @@ class UNetGenerator(BaseGenerator):
         for m in self.modules():
             if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
                 nn.init.normal_(m.weight, 0.0, 0.02)
-            elif isinstance(m, nn.GroupNorm) and m.weight is not None:
+            elif isinstance(m, nn.InstanceNorm2d) and m.weight is not None:
                 nn.init.normal_(m.weight, 1.0, 0.02)
                 nn.init.zeros_(m.bias)
 
